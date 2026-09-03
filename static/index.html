@@ -37,7 +37,17 @@
   <section id="page-add" class="active">
     <div class="card">
       <div class="page-title">记账</div>
-      <div class="placeholder">暂无数据<br><span class="note">记账功能将在后续阶段完善</span></div>
+      <div class="field">
+        <label>场景</label>
+        <select id="scene-select"></select>
+      </div>
+      <div class="chips" id="sub-chips"></div>
+      <div class="chips" id="merchant-chips"></div>
+      <div class="inline-add" id="merchant-add" style="display:none">
+        <input id="merchant-name" placeholder="输入新增商家名称">
+        <button class="btn small" id="btn-merchant-add">保存</button>
+      </div>
+      <div class="sel-hint" id="sel-hint"></div>
     </div>
   </section>
 
@@ -197,6 +207,11 @@ async function startApp(){
   $('user-name').textContent = u ? (u.username + (isAdmin ? ' · 管理员' : '')) : '';
   hideLogin();
   switchPage('add');
+  // 加载分类树并渲染场景三级联动（记账页默认页）
+  if(S.categories.length === 0){
+    try{ await fetchCategories(); }catch(e){ toast(e.message); }
+  }
+  renderSceneSelect();
 }
 
 // ---- 汉堡抽屉 ----
@@ -390,6 +405,99 @@ $('btn-create-user').addEventListener('click', async ()=>{
     $('au-name').value=''; $('au-pass').value='';
     toast('已创建账户', true);
     renderUsers();
+  }catch(e){ toast(e.message); }
+});
+
+// ---- 场景三级联动组件（记账页）----
+const S = { categories: [], scene: null, sub: null, merchant: null };
+function findCat(id, arr){
+  if(arr === undefined) arr = S.categories;
+  for(const n of arr){
+    if(n.id === id) return n;
+    const r = findCat(id, n.children);
+    if(r) return r;
+  }
+  return null;
+}
+async function fetchCategories(){
+  const j = await api('/api/categories');
+  S.categories = j.data || [];
+}
+function renderSceneSelect(sceneId){
+  const sel = $('scene-select');
+  sel.innerHTML = '';
+  S.categories.forEach(s=>{
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.name;
+    sel.appendChild(o);
+  });
+  sel.value = sceneId || (S.categories[0] && S.categories[0].id) || '';
+  if(sel.value) onSceneChange(parseInt(sel.value, 10));
+}
+function renderChips(box, items, activeId, onClick){
+  box.innerHTML = '';
+  items.forEach(n=>{
+    const c = document.createElement('span');
+    c.className = 'chip' + (n.id === activeId ? ' on' : '');
+    c.textContent = n.name;
+    c.addEventListener('click', ()=> onClick(n));
+    box.appendChild(c);
+  });
+}
+function onSceneChange(sceneId){
+  const scene = findCat(sceneId);
+  if(!scene) return;
+  S.scene = scene; S.sub = null; S.merchant = null;
+  renderChips($('sub-chips'), scene.children, null, onSubClick);
+  if(scene.children.length){
+    // 默认选中第一个子项，无商家则显示新增
+    onSubClick(scene.children[0]);
+    autoSelect(scene.children[0]);
+  } else {
+    $('merchant-chips').innerHTML = '';
+    $('merchant-add').style.display = 'none';
+    updateHint();
+  }
+}
+function onSubClick(sub){
+  S.sub = sub; S.merchant = null;
+  renderChips($('sub-chips'), S.scene.children, sub.id, onSubClick);
+  renderChips($('merchant-chips'), sub.children, null, onMerchantClick);
+  $('merchant-add').style.display = 'flex';
+  updateHint();
+}
+function onMerchantClick(merchant){
+  S.merchant = merchant;
+  // 当前仅选中子项级，商家作为叶子（level=3）
+  renderChips($('merchant-chips'), S.sub.children, merchant.id, onMerchantClick);
+  updateHint();
+}
+function updateHint(){
+  const sel = S.sub
+    ? (S.sub.name + (S.scene ? '（' + S.scene.name + '）' : ''))
+    : (S.scene ? S.scene.name : '');
+  $('sel-hint').textContent = '当前分类：' + sel;
+}
+function autoSelect(sub){
+  if(sub.children.length) onMerchantClick(sub.children[0]);
+}
+// 场景下拉变更监听（一次性绑定，避免叠加）
+$('scene-select').addEventListener('change', ()=> onSceneChange(parseInt($('scene-select').value, 10)));
+// 新增商家：父级为当前二级子项，成功后刷新并默认选中新商家
+$('btn-merchant-add').addEventListener('click', async ()=>{
+  if(!S.sub){ toast('请先选择子项'); return; }
+  const name = $('merchant-name').value.trim();
+  if(!name){ toast('请输入商家名称'); return; }
+  try{
+    const j = await api('/api/categories', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, parent_id: S.sub.id }) });
+    $('merchant-name').value = '';
+    await fetchCategories();
+    const newSub = findCat(S.sub.id);
+    renderChips($('merchant-chips'), newSub.children, j.data.id, onMerchantClick);
+    S.merchant = findCat(j.data.id) || null;
+    updateHint();
+    toast('商家已保存', true);
   }catch(e){ toast(e.message); }
 });
 
