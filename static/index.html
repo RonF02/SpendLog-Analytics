@@ -503,12 +503,18 @@ S.load = async function(){
   await Promise.allSettled([loadCategories(), loadDict()]);
   if(!$('f-amount').value) $('f-amount').value = '0.00'; // 金额默认当前
   if(!$('f-date').value) $('f-date').value = todayStr();   // 日期默认今天
+  if(!$('f-time').value) $('f-time').value = nowTimeStr();  // 时间默认当前
 };
 
 function todayStr(){
   const d = new Date();
   const p = n => (n < 10 ? '0' : '') + n;
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function nowTimeStr(){
+  const d = new Date();
+  const p = n => (n < 10 ? '0' : '') + n;
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 function mainOf(id){ return S.categories.find(c => c.id === id); }
 function findCat(id, arr){
