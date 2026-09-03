@@ -57,7 +57,7 @@ header{ position:sticky; top:0; z-index:20; background:var(--card); border-botto
 .addbar{ color:var(--accent); font-size:13px; margin-top:8px; cursor:pointer; }
 .addform{ margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 .addform input{ flex:1; min-width:90px; padding:9px; }
-.chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; touch-action:none; -webkit-touch-callout:none; }
 .chip{ padding:8px 15px; border-radius:18px; border:1px solid var(--line); background:#f7f8fb;
   font-size:13px; cursor:pointer; color:#555; position:relative; user-select:none;
   -webkit-user-select:none; -webkit-touch-callout:none; }
