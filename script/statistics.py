@@ -180,8 +180,8 @@ def aggregate(uid, params):
     # ---- scenario_breakdown（支出，按消费场景）----
     sc_map = {}
     for x in exp:
-        e = sc_map.setdefault(x["motive"] or "未分类",
-                              {"name": x["motive"] or "未分类", "total": 0.0})
+        e = sc_map.setdefault(x["motive_id"],
+                              {"id": x["motive_id"], "name": x["motive"] or "未分类", "total": 0.0})
         e["total"] += -x["amount"]
     scenario_breakdown = sorted(sc_map.values(), key=lambda z: -z["total"])
 

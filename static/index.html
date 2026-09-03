@@ -191,11 +191,31 @@ document.querySelectorAll('.tabbar > div').forEach(t=>{
   t.addEventListener('click', ()=> switchPage(t.getAttribute('data-page')));
 });
 
-// ---- 报表页（阶段5 5.9）----
+// ---- 报表页（阶段5 5.9 + 阶段7 下钻与筛选）----
 const _now = new Date();
 $('stat-month').value = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2, '0');
-$('stat-month').addEventListener('change', loadStats);
+$('stat-month').addEventListener('change', ()=>{ ST.categoryId=''; loadStats(); });
 
+// 筛选状态（categoryId=下钻根；其余均用查询字符串形式，'' 表示不限）
+let ST = { categoryId:'', motive:'', channel:'', is_weekend:'', period:'', month_part:'' };
+let _chansC = null, _motsC = null;
+
+function statsQuery(){
+  const qs = new URLSearchParams();
+  qs.set('month', $('stat-month').value);
+  if(ST.categoryId) qs.set('category_id', ST.categoryId);
+  if(ST.motive) qs.set('motive', ST.motive);
+  if(ST.channel) qs.set('channel', ST.channel);
+  if(ST.is_weekend) qs.set('is_weekend', ST.is_weekend);
+  if(ST.period) qs.set('period', ST.period);
+  if(ST.month_part) qs.set('month_part', ST.month_part);
+  return qs.toString();
+}
+async function getFilterData(){
+  try{ if(!_chansC) _chansC = ((await api('/api/channels')).data || []); }catch(e){ _chansC = _chansC || []; }
+  try{ if(!_motsC) _motsC = ((await api('/api/motives')).data || []); }catch(e){ _motsC = _motsC || []; }
+  return [_chansC, _motsC];
+}
 function fm(x){
   const n = Number(x || 0);
   return (n<0?'-':'') + '¥' + Math.abs(n).toFixed(2);
@@ -204,9 +224,13 @@ async function loadStats(){
   const month = $('stat-month').value;
   if(!month) return;
   $('stat-body').innerHTML = '<div class="note">加载中…</div>';
+  let chans=[], mots=[];
   try{
-    const j = await api('/api/report/aggregate?month='+month);
-    renderStats(j.data || {});
+    const [j] = await Promise.all([
+      api('/api/report/aggregate?' + statsQuery()),
+      getFilterData().then(v=>{ chans=v[0]; mots=v[1]; })
+    ]);
+    renderStats(j.data || {}, chans, mots);
   }catch(e){
     $('stat-body').innerHTML = '<div class="note">'+(e.message||'加载失败')+'</div>';
   }
@@ -227,13 +251,57 @@ async function loadBalance(){
     el.innerHTML = '<div class="note">余额加载失败'+(e.message? '：'+e.message : '')+'</div>';
   }
 }
-function barItem(total, name, max){
-  const pct = max>0 ? Math.round(total/max*100) : 0;
-  return '<div class="bar-row"><div class="bar-label">'+name+'</div>'+
-    '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%"></div></div>'+
-    '<div class="bar-val">'+fm(total)+'</div></div>';
+
+// ---- 下钻 & 筛选 ----
+function drillTo(cid){ ST.categoryId = cid ? String(cid) : ''; loadStats(); }
+function statFilter(el){
+  const k = el.dataset.x, v = el.dataset.y;
+  ST[k] = (String(ST[k]||'') === v) ? '' : v; // 再次点击取消
+  loadStats();
 }
-function renderStats(d){
+function scenFilter(id){ ST.motive = String(id); loadStats(); }
+function clearStatsFilters(){
+  ST = { categoryId:'', motive:'', channel:'', is_weekend:'', period:'', month_part:'' };
+  loadStats();
+}
+function scol(k, v, label){
+  const on = (String(ST[k]||'') === String(v));
+  return '<span class="chip'+(on?' on':'')+'" data-x="'+k+'" data-y="'+v+'" onclick="statFilter(this)">'+label+'</span>';
+}
+function filtersHtml(chans, mots){
+  let html = '<div class="filters">'
+    + '<div class="fg"><span>渠道</span><div class="chips">'
+      + chans.map(c=>scol('channel', c.name, c.name)).join('')
+    + '</div></div>'
+    + '<div class="fg"><span>消费场景</span><div class="chips">'
+      + mots.map(m=>scol('motive', m.id, m.name)).join('')
+    + '</div></div>'
+    + '<div class="fg"><span>时间</span><div class="chips">'
+      + scol('is_weekend','true','周末') + scol('is_weekend','false','工作日')
+    + '</div></div>'
+    + '<div class="fg"><span>时段</span><div class="chips">'
+      + ['凌晨','上午','下午','晚上'].map(p=>scol('period',p,p)).join('')
+    + '</div></div>'
+    + '<div class="fg"><span>月段</span><div class="chips">'
+      + ['月初','月中','月末'].map(p=>scol('month_part',p,p)).join('')
+    + '</div></div>'
+    + '<button class="mini-btn" onclick="clearStatsFilters()">清除筛选</button>'
+    + '</div>';
+  return html;
+}
+function crumbHtml(path){
+  let h = '<div class="crumb"><a href="javascript:void(0)" onclick="drillTo(\'\')">全部</a>';
+  (path||[]).forEach(p=>{ h += ' / <a href="javascript:void(0)" onclick="drillTo('+p.category_id+')">'+(p.name||'-')+'</a>'; });
+  return h + '</div>';
+}
+function barItem(total,name,max,cid){
+  const pct = max>0 ? Math.round(total/max*100) : 0;
+  const cursor = cid!==undefined ? ' style="cursor:pointer"' : '';
+  return '<div class="bar-row"'+(cid!==undefined?' onclick="drillTo('+cid+')"':'')+cursor+'><div class="bar-label">'+name+'</div>'
+    + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%"></div></div>'
+    + '<div class="bar-val">'+fm(total)+'</div></div>';
+}
+function renderStats(d, chans, mots){
   const t = d.total || {income:0, expense:0, balance:0};
   const scene = d.scene_breakdown || [];
   const scen = d.scenario_breakdown || [];
@@ -241,15 +309,17 @@ function renderStats(d){
   const dist = d.spending_dist || [];
   const recs = d.records || [];
   const max = Math.max.apply(null, [1].concat(scene.map(x=>x.total))) || 1;
-  let html = '<div class="stat-grid">'
+  // 顶栏：筛选 + 面包屑
+  let html = filtersHtml(chans || [], mots || []) + crumbHtml(d.path);
+  html += '<div class="stat-grid">'
     + '<div class="stat-cell"><div class="stat-v">'+fm(t.income)+'</div><div class="stat-l">收入</div></div>'
     + '<div class="stat-cell"><div class="stat-v">'+fm(-t.expense)+'</div><div class="stat-l">支出</div></div>'
     + '<div class="stat-cell"><div class="stat-v">'+fm(t.balance)+'</div><div class="stat-l">结余</div></div>'
     + '</div>';
-  html += '<div class="mod-title">钱去哪了（场景）</div>'
-    + (scene.length ? scene.map(x=>barItem(x.total, x.name, max)).join('') : '<div class="note">本月无支出</div>');
-  html += '<div class="mod-title">怎么花的（消费场景）</div>'
-    + (scen.length ? scen.map(x=>'<div class="kv"><span>'+x.name+'</span><span>'+fm(x.total)+'</span></div>').join('') : '<div class="note">本月无支出</div>');
+  html += '<div class="mod-title">钱去哪了（场景，点击下钻）</div>'
+    + (scene.length ? scene.map(x=>barItem(x.total, x.name, max, x.category_id)).join('') : '<div class="note">本月无支出</div>');
+  html += '<div class="mod-title">怎么花的（消费场景，点击筛选）</div>'
+    + (scen.length ? scen.map(x=>'<div class="kv" onclick="scenFilter('+(x.id||x.name)+')"><span class="clicky">'+x.name+'</span><span>'+fm(x.total)+'</span></div>').join('') : '<div class="note">本月无支出</div>');
   html += '<div class="mod-title">渠道</div>'
     + (chan.length ? chan.map(x=>'<div class="kv"><span>'+x.channel+'</span><span>'+fm(x.total)+'</span></div>').join('') : '<div class="note">本月无记录</div>');
   html += '<div class="mod-title">消费分布</div><table class="tbl"><tr><th>分类</th><th>金额</th><th>笔数</th><th>中位</th><th>均值</th></tr>'
@@ -261,7 +331,7 @@ function renderStats(d){
     + '</table>';
   // 预算执行（阶段6.7，超支红）
   const bud = d.budget || [];
-  let budHtml = '<div class="mod-title">预算执行 <button class="mini-btn" onclick="toggleBudgetSet()">设预算</button></div>'
+  html += '<div class="mod-title">预算执行 <button class="mini-btn" onclick="toggleBudgetSet()">设预算</button></div>'
     + '<div id="budget-set" style="display:none" class="row">'
     + '<select id="b-cat"></select><input id="b-amount" type="number" placeholder="金额" style="width:90px">'
     + '<button class="btn small" onclick="setBudget()">保存</button></div>'
@@ -270,12 +340,10 @@ function renderStats(d){
         +'<span>预算 '+fm(x.budget_amount)+'</span><span>实花 '+fm(x.actual)+'</span>'
         +'<span class="bud-rem'+(x.overspent?' bad':'')+'">'+(x.overspent?'超支':'结余')+' '+fm(x.remaining)+'</span></div>'
       ).join('')+'</div>' : '<div class="note">本月未设预算，点击「设预算」添加</div>');
-  html += budHtml;
   // 账户余额（阶段6.6，由 loadBalance 填充，失败不影响报表）
   html += '<div class="mod-title">账户余额</div><div id="balance-list"><div class="note">加载中…</div></div>';
   $('stat-body').innerHTML = html;
   fillBudgetCats();
-  loadBalance();
 }
 
 // ---- 预算 & 余额（阶段6）----
