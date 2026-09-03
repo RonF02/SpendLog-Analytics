@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>SpendLog Analytics · 分析记账</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- 登录 / 注册遮罩 -->
+<div class="login-overlay" id="login-overlay">
+  <div class="login-card">
+    <h2 id="login-title">分析记账 · 登录</h2>
+    <input id="u-name" placeholder="用户名（3-20 字符，支持中文）">
+    <input id="u-pass" type="password" placeholder="密码（至少 6 位）">
+    <input id="u-pass2" type="password" placeholder="确认密码" style="display:none">
+    <div class="login-feedback" id="login-feedback"></div>
+    <button class="btn" id="login-btn">登 录</button>
+    <div class="login-toggle" id="login-toggle">首次使用？注册账号</div>
+  </div>
+</div>
+
+<!-- 主界面 -->
+<div class="app">
+  <header>
+    <div class="hdr">
+      <h1>分析记账</h1>
+      <div class="hdr-right">
+        <span id="user-name"></span>
+        <button class="hamburger" id="hamburger" aria-label="菜单">&#9776;</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 记账页 -->
+  <section id="page-add" class="active">
+    <div class="card">
+      <div class="page-title">记账</div>
+      <div class="placeholder">暂无数据<br><span class="note">记账功能将在后续阶段完善</span></div>
+    </div>
+  </section>
+
+  <!-- 报表页 -->
+  <section id="page-stat">
+    <div class="card">
+      <div class="page-title">报表</div>
+      <div class="placeholder">暂无数据<br><span class="note">报表功能将在后续阶段完善</span></div>
+    </div>
+  </section>
+</div>
+
+<!-- 汉堡抽屉 -->
+<div class="drawer-mask" id="drawer-mask"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <span id="drawer-user"></span>
+    <span class="drawer-close" id="drawer-close">&#10005;</span>
+  </div>
+  <div id="drawer-user-sections">
+    <div class="drawer-section">
+      <h2>会话管理</h2>
+      <p class="note">查看已登录设备，可强制下线（后续阶段接入）</p>
+      <div id="session-list"></div>
+    </div>
+    <div class="drawer-section">
+      <h2>修改密码</h2>
+      <div class="pw-form">
+        <input id="a-old" type="password" placeholder="原密码">
+        <input id="a-new" type="password" placeholder="新密码（至少 6 位）">
+        <input id="a-new2" type="password" placeholder="确认新密码">
+        <button class="btn" id="btn-change-pw">修改密码</button>
+      </div>
+    </div>
+  </div>
+  <div id="drawer-admin-sections" class="drawer-section" style="display:none">
+    <h2>用户列表</h2>
+    <p class="note">管理员用户管理（后续阶段接入）</p>
+    <div id="admin-users"></div>
+  </div>
+  <div class="drawer-footer">
+    <button class="mini-btn warn" id="btn-delete">删除账号</button>
+    <button class="mini-btn danger" id="btn-logout">退出登录</button>
+  </div>
+</div>
+
+<!-- 底部 Tab -->
+<div class="tabbar">
+  <div id="tab-add" class="active" data-page="add">记账</div>
+  <div id="tab-stat" data-page="stat">报表</div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// ---- 底部 Tab 切换（阶段 0 仅切换本地视图）----
+function switchPage(name){
+  document.querySelectorAll('section').forEach(s=> s.classList.toggle('active', s.id === 'page-'+name));
+  document.querySelectorAll('.tabbar > div').forEach(t=> t.classList.toggle('active', t.getAttribute('data-page') === name));
+}
+document.querySelectorAll('.tabbar > div').forEach(t=>{
+  t.addEventListener('click', ()=> switchPage(t.getAttribute('data-page')));
+});
+
+// ---- 登录 / 注册（阶段 0 仅本地交互，认证接口后续接入）----
+let authMode = 'login';
+function setFeedback(msg){
+  $('login-feedback').textContent = msg || '';
+}
+function toggleAuthMode(){
+  authMode = authMode === 'login' ? 'register' : 'login';
+  const isReg = authMode === 'register';
+  $('u-pass2').style.display = isReg ? 'block' : 'none';
+  $('login-title').textContent = isReg ? '分析记账 · 注册' : '分析记账 · 登录';
+  $('login-btn').textContent = isReg ? '注 册' : '登 录';
+  $('login-toggle').textContent = isReg ? '已有账号？去登录' : '首次使用？注册账号';
+  setFeedback('');
+}
+function doAuth(){
+  // 认证接口将在阶段 2 接入，此处仅做前端校验演示
+  const username = $('u-name').value.trim();
+  const password = $('u-pass').value;
+  setFeedback('');
+  if(!username || !password){ setFeedback('请输入用户名和密码'); return; }
+  if(authMode === 'register'){
+    const confirm = $('u-pass2').value;
+    if(!confirm || confirm !== password){ setFeedback('两次输入的密码不一致'); return; }
+    setFeedback('注册功能将在阶段 2 接入');
+    return;
+  }
+  setFeedback('登录功能将在阶段 2 接入');
+}
+$('login-btn').addEventListener('click', doAuth);
+$('login-toggle').addEventListener('click', toggleAuthMode);
+// 回车键：用户名→密码→提交（阶段 0 先本地聚焦流转）
+const loginFields = ['u-name', 'u-pass', 'u-pass2'];
+loginFields.forEach((id, i)=>{
+  $(id).addEventListener('keydown', e=>{
+    if(e.key !== 'Enter') return;
+    e.preventDefault();
+    if(authMode === 'register' && i < 2){ $(loginFields[i+1]).focus(); return; }
+    if(i < 1){ $('u-pass').focus(); return; }
+    doAuth();
+  });
+});
+
+// ---- 汉堡抽屉 ----
+function toggleDrawer(open){
+  const d = $('drawer'), m = $('drawer-mask');
+  const show = (open === undefined) ? !d.classList.contains('open') : open;
+  d.classList.toggle('open', show);
+  m.classList.toggle('show', show);
+  document.body.style.overflow = show ? 'hidden' : '';
+  if(show){
+    const u = JSON.parse(localStorage.getItem('user') || 'null');
+    $('drawer-user').textContent = u ? (u.username + (u.is_admin ? ' · 管理员' : '')) : '';
+    const admin = u && u.is_admin;
+    $('drawer-admin-sections').style.display = admin ? 'block' : 'none';
+    $('drawer-user-sections').style.display = admin ? 'none' : 'block';
+  }
+}
+$('hamburger').addEventListener('click', ()=> toggleDrawer());
+$('drawer-close').addEventListener('click', ()=> toggleDrawer(false));
+$('drawer-mask').addEventListener('click', ()=> toggleDrawer(false));
+$('btn-logout').addEventListener('click', ()=>{
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  $('login-overlay').style.display = 'flex';
+});
+$('btn-delete').addEventListener('click', ()=>{
+  // 账号删除将在阶段 2 接入，此处先演示二次确认
+  if(!confirm('确定删除账号？此操作将永久移除你的全部数据，且不可恢复。')) return;
+  if(!confirm('二次确认：删除后无法找回，确定永久删除？')) return;
+  alert('删除账号功能将在阶段 2 接入');
+});
+$('btn-change-pw').addEventListener('click', ()=>{
+  alert('修改密码功能将在阶段 2 接入');
+});
+</script>
+</body>
+</html>
