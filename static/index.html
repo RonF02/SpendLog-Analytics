@@ -37,7 +37,7 @@
   <div class="card page active" id="page-add">
     <div class="label">金额（支出填负值，收入填正值）</div>
     <input id="f-amount" class="amount-input" type="number" step="0.01" placeholder="0.00">
-    <div class="row">
+    <div class="row" style="margin-top:16px">
       <div><input id="f-date" type="date"></div>
       <div><input id="f-time" type="time"></div>
     </div>
@@ -501,7 +501,8 @@ let curMain = null;
 
 S.load = async function(){
   await Promise.allSettled([loadCategories(), loadDict()]);
-  if(!$('f-date').value) $('f-date').value = todayStr();
+  if(!$('f-amount').value) $('f-amount').value = '0.00'; // 金额默认当前
+  if(!$('f-date').value) $('f-date').value = todayStr();   // 日期默认今天
 };
 
 function todayStr(){
