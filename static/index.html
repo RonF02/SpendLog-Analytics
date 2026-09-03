@@ -33,29 +33,25 @@
     </div>
   </header>
 
-  <!-- 记账页 -->
-  <section id="page-add" class="active">
-    <div class="card">
-      <div class="page-title">记账</div>
-      <div class="field">
-        <label>场景</label>
-        <select id="scene-select"></select>
-      </div>
-      <div class="chips" id="sub-chips"></div>
-      <div class="sel-hint" id="sel-hint"></div>
+  <!-- 记账页（仅记账 card） -->
+  <div class="card page active" id="page-add">
+    <div class="page-title">记账</div>
+    <div class="field">
+      <label>场景</label>
+      <select id="scene-select"></select>
     </div>
-  </section>
+    <div class="chips" id="sub-chips"></div>
+    <div class="sel-hint" id="sel-hint"></div>
+  </div>
 
-  <!-- 报表页 -->
-  <section id="page-stat">
-    <div class="card">
-      <div class="page-title">报表</div>
-      <div class="placeholder">暂无数据<br><span class="note">报表功能将在后续阶段完善</span></div>
-    </div>
-  </section>
+  <!-- 报表页（仅报表 card） -->
+  <div class="card page" id="page-stat">
+    <div class="page-title">报表</div>
+    <div class="placeholder">暂无数据<br><span class="note">报表功能将在后续阶段完善</span></div>
+  </div>
 
   <!-- 管理页（管理员） -->
-  <section id="page-admin">
+  <section class="page" id="page-admin">
     <div class="card">
       <h2>用户管理</h2>
       <div id="admin-users"></div>
@@ -149,7 +145,7 @@ function currentUser(){
 
 // ---- 底部 Tab ----
 function switchPage(name){
-  document.querySelectorAll('section').forEach(s=> s.classList.toggle('active', s.id === 'page-'+name));
+  document.querySelectorAll('.page').forEach(s=> s.classList.toggle('active', s.id === 'page-'+name));
   document.querySelectorAll('.tabbar > div').forEach(t=> t.classList.toggle('active', t.getAttribute('data-page') === name));
   if(name === 'admin') loadAdmin();
 }

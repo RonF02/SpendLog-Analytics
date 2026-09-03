@@ -41,6 +41,8 @@ input[type="password"]{ -webkit-text-security:disc; }
 
 /* ---- 主界面 ---- */
 .app{ max-width:520px; margin:0 auto; padding-bottom:70px; }
+.page{ display:none; }
+.page.active{ display:block; }
 header{ position:sticky; top:0; z-index:20; background:var(--card); border-bottom:1px solid var(--line); }
 .hdr{ display:flex; align-items:center; justify-content:space-between; padding:12px 16px; }
 .hdr h1{ font-size:17px; margin:0; }
