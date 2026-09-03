@@ -59,6 +59,9 @@ def _to_int(v):
 
 class Handler(BaseHTTPRequestHandler):
     server_version = "SpendLogAnalytics/0.1"
+    # HTTP/1.1 保持连接：浏览器复用同一 socket，避免高频创建/断开连接导致 Windows
+    # 本地端口(TIME_WAIT)耗尽而触发 ERR_CONNECTION_TIMED_OUT（localhost 连接超时）。
+    protocol_version = "HTTP/1.1"
 
     def log_message(self, fmt, *args):
         pass
@@ -391,11 +394,17 @@ class Handler(BaseHTTPRequestHandler):
         return mime.get(os.path.splitext(path)[1].lower(), "application/octet-stream")
 
 
+class _Server(ThreadingHTTPServer):
+    daemon_threads = True          # 连接线程不残留、不阻塞退出
+    allow_reuse_address = True     # 快速重启可复用端口
+    request_queue_size = 128
+
+
 if __name__ == "__main__":
     args = parse_args()
     init_accounts_db()
     ensure_admin()
-    server = ThreadingHTTPServer((HOST, args.port), Handler)
+    server = _Server((HOST, args.port), Handler)
     print("SpendLog-Analytics running at http://{}:{}/  ".format(HOST, args.port))
     print("手机访问请使用电脑局域网 IP，例如 http://<局域网IP>:{}/".format(args.port))
     try:
