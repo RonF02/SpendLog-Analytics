@@ -42,11 +42,6 @@
         <select id="scene-select"></select>
       </div>
       <div class="chips" id="sub-chips"></div>
-      <div class="chips" id="merchant-chips"></div>
-      <div class="inline-add" id="merchant-add" style="display:none">
-        <input id="merchant-name" placeholder="输入新增商家名称">
-        <button class="btn small" id="btn-merchant-add">保存</button>
-      </div>
       <div class="sel-hint" id="sel-hint"></div>
     </div>
   </section>
@@ -61,15 +56,6 @@
 
   <!-- 管理页（管理员） -->
   <section id="page-admin">
-    <div class="card">
-      <h2>修改密码</h2>
-      <div class="pw-form">
-        <input id="a-old" type="password" placeholder="原密码">
-        <input id="a-new" type="password" placeholder="新密码（至少 6 位）">
-        <input id="a-new2" type="password" placeholder="确认新密码">
-        <button class="btn" onclick="doChangePassword()">修改密码</button>
-      </div>
-    </div>
     <div class="card">
       <h2>用户管理</h2>
       <div id="admin-users"></div>
@@ -472,20 +458,6 @@ async function delUser(id){
     loadAdmin();
   }catch(e){ toast(e.message); }
 }
-async function doChangePassword(){
-  const old = $('a-old').value;
-  const n1 = $('a-new').value;
-  const n2 = $('a-new2').value;
-  if(!old){ toast('请输入原密码'); return; }
-  if(!n1 || n1.length < 6){ toast('新密码至少 6 位'); return; }
-  if(n1 !== n2){ toast('两次新密码不一致'); return; }
-  try{
-    await api('/api/auth/password', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ old_password: old, new_password: n1 }) });
-    $('a-old').value=''; $('a-new').value=''; $('a-new2').value='';
-    toast('密码已修改', true);
-  }catch(e){ toast(e.message); }
-}
 async function doAddUser(){
   const name = $('au-name').value.trim();
   const pass = $('au-pass').value;
@@ -500,8 +472,8 @@ async function doAddUser(){
   }catch(e){ toast(e.message); }
 }
 
-// ---- 场景三级联动组件（记账页）----
-const S = { categories: [], scene: null, sub: null, merchant: null };
+// ---- 场景分类组件（记账页）：场景下拉 → 二级子项 ----
+const S = { categories: [], scene: null, sub: null };
 function findCat(id, arr){
   if(arr === undefined) arr = S.categories;
   for(const n of arr){
@@ -539,29 +511,18 @@ function renderChips(box, items, activeId, onClick){
 function onSceneChange(sceneId){
   const scene = findCat(sceneId);
   if(!scene) return;
-  S.scene = scene; S.sub = null; S.merchant = null;
+  S.scene = scene; S.sub = null;
   renderChips($('sub-chips'), scene.children, null, onSubClick);
   if(scene.children.length){
-    // 默认选中第一个子项，无商家则显示新增
+    // 默认选中第一个二级子项
     onSubClick(scene.children[0]);
-    autoSelect(scene.children[0]);
   } else {
-    $('merchant-chips').innerHTML = '';
-    $('merchant-add').style.display = 'none';
     updateHint();
   }
 }
 function onSubClick(sub){
-  S.sub = sub; S.merchant = null;
+  S.sub = sub;
   renderChips($('sub-chips'), S.scene.children, sub.id, onSubClick);
-  renderChips($('merchant-chips'), sub.children, null, onMerchantClick);
-  $('merchant-add').style.display = 'flex';
-  updateHint();
-}
-function onMerchantClick(merchant){
-  S.merchant = merchant;
-  // 当前仅选中子项级，商家作为叶子（level=3）
-  renderChips($('merchant-chips'), S.sub.children, merchant.id, onMerchantClick);
   updateHint();
 }
 function updateHint(){
@@ -570,28 +531,8 @@ function updateHint(){
     : (S.scene ? S.scene.name : '');
   $('sel-hint').textContent = '当前分类：' + sel;
 }
-function autoSelect(sub){
-  if(sub.children.length) onMerchantClick(sub.children[0]);
-}
 // 场景下拉变更监听（一次性绑定，避免叠加）
 $('scene-select').addEventListener('change', ()=> onSceneChange(parseInt($('scene-select').value, 10)));
-// 新增商家：父级为当前二级子项，成功后刷新并默认选中新商家
-$('btn-merchant-add').addEventListener('click', async ()=>{
-  if(!S.sub){ toast('请先选择子项'); return; }
-  const name = $('merchant-name').value.trim();
-  if(!name){ toast('请输入商家名称'); return; }
-  try{
-    const j = await api('/api/categories', { method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ name, parent_id: S.sub.id }) });
-    $('merchant-name').value = '';
-    await fetchCategories();
-    const newSub = findCat(S.sub.id);
-    renderChips($('merchant-chips'), newSub.children, j.data.id, onMerchantClick);
-    S.merchant = findCat(j.data.id) || null;
-    updateHint();
-    toast('商家已保存', true);
-  }catch(e){ toast(e.message); }
-});
 
 // ---- 初始化 ----
 (async function initAuth(){
