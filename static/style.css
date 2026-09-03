@@ -73,6 +73,19 @@ header{ position:sticky; top:0; z-index:20; background:var(--card); border-botto
 .drawer-footer{ margin-top:auto; padding:16px; display:flex; gap:10px; }
 .drawer-footer .mini-btn{ flex:1; }
 
+/* 会话 / 用户列表 */
+.user-row{ padding:10px 0; border-bottom:1px dashed var(--line); }
+.user-row:last-child{ border-bottom:none; }
+.u-name{ font-size:14px; font-weight:600; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.u-meta{ font-size:12px; color:var(--muted); margin:2px 0 6px; }
+.tag{ font-size:11px; padding:1px 6px; border-radius:8px; background:var(--accent-bg); color:var(--accent); }
+.tag.on{ background:var(--red-bg); color:var(--red); }
+.u-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+.reset-form{ display:flex; gap:8px; margin-top:6px; flex-wrap:wrap; }
+.reset-form input{ width:150px; }
+.pw-form{ display:flex; flex-direction:column; gap:10px; }
+.pw-form .btn{ margin-top:2px; }
+
 /* ---- Toast ---- */
 #toast{ position:fixed; left:50%; bottom:90px; transform:translateX(-50%); z-index:60;
   padding:10px 18px; border-radius:20px; color:#fff; font-size:13px;
