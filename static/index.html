@@ -69,7 +69,11 @@
   <!-- 报表页（仅报表 card） -->
   <div class="card page" id="page-stat">
     <div class="page-title">报表</div>
-    <div class="placeholder">暂无数据<br><span class="note">报表功能将在后续阶段完善</span></div>
+    <div class="row" style="margin-top:4px">
+      <input type="month" id="stat-month">
+      <button class="btn small" onclick="loadStats()">刷新</button>
+    </div>
+    <div id="stat-body"></div>
   </div>
 
   <!-- 管理页（管理员） -->
@@ -170,10 +174,66 @@ function switchPage(name){
   document.querySelectorAll('.page').forEach(s=> s.classList.toggle('active', s.id === 'page-'+name));
   document.querySelectorAll('.tabbar > div').forEach(t=> t.classList.toggle('active', t.getAttribute('data-page') === name));
   if(name === 'admin') loadAdmin();
+  if(name === 'stat') loadStats();
 }
 document.querySelectorAll('.tabbar > div').forEach(t=>{
   t.addEventListener('click', ()=> switchPage(t.getAttribute('data-page')));
 });
+
+// ---- 报表页（阶段5 5.9）----
+const _now = new Date();
+$('stat-month').value = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2, '0');
+$('stat-month').addEventListener('change', loadStats);
+
+function fm(x){
+  const n = Number(x || 0);
+  return (n<0?'-':'') + '¥' + Math.abs(n).toFixed(2);
+}
+async function loadStats(){
+  const month = $('stat-month').value;
+  if(!month) return;
+  $('stat-body').innerHTML = '<div class="note">加载中…</div>';
+  try{
+    const j = await api('/api/report/aggregate?month='+month);
+    renderStats(j.data || {});
+  }catch(e){
+    $('stat-body').innerHTML = '<div class="note">'+(e.message||'加载失败')+'</div>';
+  }
+}
+function barItem(total, name, max){
+  const pct = max>0 ? Math.round(total/max*100) : 0;
+  return '<div class="bar-row"><div class="bar-label">'+name+'</div>'+
+    '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%"></div></div>'+
+    '<div class="bar-val">'+fm(total)+'</div></div>';
+}
+function renderStats(d){
+  const t = d.total || {income:0, expense:0, balance:0};
+  const scene = d.scene_breakdown || [];
+  const scen = d.scenario_breakdown || [];
+  const chan = d.channel_breakdown || [];
+  const dist = d.spending_dist || [];
+  const recs = d.records || [];
+  const max = Math.max.apply(null, [1].concat(scene.map(x=>x.total))) || 1;
+  let html = '<div class="stat-grid">'
+    + '<div class="stat-cell"><div class="stat-v">'+fm(t.income)+'</div><div class="stat-l">收入</div></div>'
+    + '<div class="stat-cell"><div class="stat-v">'+fm(-t.expense)+'</div><div class="stat-l">支出</div></div>'
+    + '<div class="stat-cell"><div class="stat-v">'+fm(t.balance)+'</div><div class="stat-l">结余</div></div>'
+    + '</div>';
+  html += '<div class="mod-title">钱去哪了（场景）</div>'
+    + (scene.length ? scene.map(x=>barItem(x.total, x.name, max)).join('') : '<div class="note">本月无支出</div>');
+  html += '<div class="mod-title">怎么花的（消费场景）</div>'
+    + (scen.length ? scen.map(x=>'<div class="kv"><span>'+x.name+'</span><span>'+fm(x.total)+'</span></div>').join('') : '<div class="note">本月无支出</div>');
+  html += '<div class="mod-title">渠道</div>'
+    + (chan.length ? chan.map(x=>'<div class="kv"><span>'+x.channel+'</span><span>'+fm(x.total)+'</span></div>').join('') : '<div class="note">本月无记录</div>');
+  html += '<div class="mod-title">消费分布</div><table class="tbl"><tr><th>分类</th><th>金额</th><th>笔数</th><th>中位</th><th>均值</th></tr>'
+    + (dist.length ? dist.map(x=>'<tr><td>'+x.name+'</td><td>'+fm(x.total)+'</td><td>'+x.count+'</td><td>'+fm(x.median)+'</td><td>'+fm(x.avg)+'</td></tr>').join('') : '<tr><td colspan="5" class="note">本月无支出</td></tr>')
+    + '</table>';
+  html += '<div class="mod-title">记录明细（'+recs.length+'）</div><table class="tbl">'
+    + '<tr><th>日期</th><th>金额</th><th>分类</th><th>消费场景</th><th>渠道</th><th>备注</th></tr>'
+    + (recs.length ? recs.map(x=>'<tr><td>'+(x.date||'')+' '+(x.time||'')+'</td><td>'+fm(x.amount)+'</td><td>'+(x.category||'-')+'</td><td>'+(x.motive||'-')+'</td><td>'+(x.channel||'-')+'</td><td>'+(x.note||'')+'</td></tr>').join('') : '<tr><td colspan="6" class="note">无记录</td></tr>')
+    + '</table>';
+  $('stat-body').innerHTML = html;
+}
 
 // ---- 登录 / 注册 ----
 let authMode = 'login';

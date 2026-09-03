@@ -22,6 +22,7 @@ from auth import (ensure_admin, register, login, logout, check_auth,
                   create_user, list_sessions, revoke_session, delete_account)
 from categories import get_categories, add_category, delete_category, reorder_categories
 from records import list_motives, channels_info, add_channel, add_record
+from statistics import aggregate
 from db import init_accounts_db
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录（本文件位于 script/）
@@ -135,6 +136,19 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/categories":
                 json_response(self, {"code": 0, "message": "ok",
                                      "data": get_categories(user["id"])})
+            elif path == "/api/report/aggregate":
+                q = self.path.split("?", 1)
+                qs = {}
+                if len(q) > 1:
+                    for part in q[1].split("&"):
+                        if "=" in part:
+                            k, v = part.split("=", 1)
+                            qs[k] = v
+                data, err = aggregate(user["id"], qs)
+                if err:
+                    json_response(self, {"code": 1, "message": err}, 400)
+                else:
+                    json_response(self, {"code": 0, "message": "ok", "data": data})
             else:
                 json_response(self, {"code": 404, "message": "Not Found"}, 404)
         else:

@@ -12,6 +12,24 @@
   --green:#17a26b;
   --warn:#d97706;
 }
+
+/* ---- 报表页模块 ---- */
+.stat-grid{ display:flex; gap:8px; margin:10px 0; }
+.stat-cell{ flex:1; text-align:center; background:var(--accent-bg); border-radius:8px; padding:10px 4px; }
+.stat-v{ font-size:16px; font-weight:600; color:var(--accent); }
+.stat-l{ font-size:12px; color:var(--muted); margin-top:2px; }
+.mod-title{ font-weight:600; margin:14px 0 6px; font-size:14px; }
+.bar-row{ display:flex; align-items:center; gap:8px; margin:6px 0; }
+.bar-label{ width:88px; font-size:13px; color:var(--muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bar-track{ flex:1; height:14px; background:#eef1f5; border-radius:7px; overflow:hidden; }
+.bar-fill{ height:100%; background:var(--accent); border-radius:7px; }
+.bar-val{ width:76px; text-align:right; font-size:13px; }
+.kv{ display:flex; justify-content:space-between; padding:6px 2px; border-bottom:1px dashed var(--line); font-size:14px; }
+.tbl{ width:100%; border-collapse:collapse; font-size:12px; }
+.tbl th,.tbl td{ border-bottom:1px solid var(--line); padding:6px 4px; text-align:left; }
+.tbl th{ color:var(--muted); font-weight:500; }
+.tbl td{ word-break:break-all; }
+.note{ color:var(--muted); font-size:13px; padding:4px 0; }
 *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body{ margin:0; padding:0; background:var(--bg); color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }
