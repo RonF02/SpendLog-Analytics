@@ -20,6 +20,7 @@ from admin import (list_users, change_password, admin_reset_password,
                    force_logout_session as admin_force_logout)
 from auth import (ensure_admin, register, login, logout, check_auth,
                   create_user, list_sessions, revoke_session, delete_account)
+from categories import get_categories, add_category, delete_category, reorder_categories
 from db import init_accounts_db
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录（本文件位于 script/）
@@ -122,6 +123,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/sessions":
                 json_response(self, {"code": 0, "message": "ok",
                                      "data": list_sessions(user["id"], self._bearer_token())})
+            elif path == "/api/categories":
+                json_response(self, {"code": 0, "message": "ok",
+                                     "data": get_categories(user["id"])})
             else:
                 json_response(self, {"code": 404, "message": "Not Found"}, 404)
         else:
@@ -176,6 +180,28 @@ class Handler(BaseHTTPRequestHandler):
                 json_response(self, {"code": 1, "message": err}, 400)
             else:
                 json_response(self, {"code": 0, "message": "ok", "data": data})
+            return
+        if path == "/api/categories/reorder":
+            user = check_auth(self._bearer_token())
+            if not user:
+                json_response(self, {"code": 401, "message": "未登录或登录已过期"}, 401)
+                return
+            data, err = reorder_categories(user["id"], payload.get("ids"), payload.get("parent_id"))
+            if err:
+                json_response(self, {"code": 1, "message": err}, 400)
+            else:
+                json_response(self, {"code": 0, "message": "ok", "data": data})
+            return
+        if path == "/api/categories":
+            user = check_auth(self._bearer_token())
+            if not user:
+                json_response(self, {"code": 401, "message": "未登录或登录已过期"}, 401)
+                return
+            data, err = add_category(user["id"], payload.get("name"), payload.get("parent_id"))
+            if err:
+                json_response(self, {"code": 1, "message": err}, 400)
+            else:
+                json_response(self, {"code": 0, "message": "ok", "data": data}, 201)
             return
         if path.startswith("/api/admin/"):
             if not self._require_admin():
@@ -235,6 +261,21 @@ class Handler(BaseHTTPRequestHandler):
                 json_response(self, {"code": 1, "message": "缺少有效的 user_id"}, 400)
                 return
             data, err = delete_user(uid)
+            if err:
+                json_response(self, {"code": 1, "message": err}, 400)
+            else:
+                json_response(self, {"code": 0, "message": "ok", "data": data})
+            return
+        if path == "/api/categories":
+            user = check_auth(self._bearer_token())
+            if not user:
+                json_response(self, {"code": 401, "message": "未登录或登录已过期"}, 401)
+                return
+            cid = _to_int(self._query_param("id"))
+            if cid is None:
+                json_response(self, {"code": 1, "message": "缺少有效的分类 id"}, 400)
+                return
+            data, err = delete_category(user["id"], cid)
             if err:
                 json_response(self, {"code": 1, "message": err}, 400)
             else:
