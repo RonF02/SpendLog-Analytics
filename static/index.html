@@ -579,12 +579,14 @@ function addAddChip(box, formId){
   const add = document.createElement('div');
   add.className = 'chip add-chip';
   add.textContent = '+新增';
-  add.onclick = ()=> toggleSide(formId);
+  add.onclick = ()=> toggleSide(box, formId);
   box.appendChild(add);
 }
-function toggleSide(id){
-  const f = $(id);
-  f.style.display = f.style.display === 'none' ? 'flex' : 'none';
+function toggleSide(box, formId){
+  const f = $(formId);
+  const open = f.style.display === 'none';
+  f.style.display = open ? 'flex' : 'none';
+  box.querySelector('.chip.add-chip').classList.toggle('active', open);
 }
 
 // ---- 记一笔页内联新增分类 ----
@@ -713,6 +715,8 @@ function finishDrag(e){
   chip.style.cssText = '';
   d.box.insertBefore(chip, marker);
   marker.remove();
+  const addChip = d.box.querySelector('.chip.add-chip');
+  if(addChip) d.box.appendChild(addChip); // 保证「+新增」始终在最后一位
   const ids = Array.from(d.box.querySelectorAll('.chip:not(.add-chip)')).map(c=> Number(c.dataset.id));
   persistOrder(d.isMain, ids);
 }
