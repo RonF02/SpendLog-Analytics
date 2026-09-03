@@ -1,0 +1,13 @@
+services:
+  spendlog-analytics:
+    build: .
+    image: spendlog-analytics
+    container_name: spendlog-analytics
+    ports:
+      - "8090:8090"
+    volumes:
+      - spendlog-analytics-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  spendlog-analytics-data:
