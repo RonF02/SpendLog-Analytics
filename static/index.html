@@ -58,6 +58,31 @@
       <div class="placeholder">暂无数据<br><span class="note">报表功能将在后续阶段完善</span></div>
     </div>
   </section>
+
+  <!-- 管理页（管理员） -->
+  <section id="page-admin">
+    <div class="card">
+      <h2>修改密码</h2>
+      <div class="pw-form">
+        <input id="a-old" type="password" placeholder="原密码">
+        <input id="a-new" type="password" placeholder="新密码（至少 6 位）">
+        <input id="a-new2" type="password" placeholder="确认新密码">
+        <button class="btn" onclick="doChangePassword()">修改密码</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>用户管理</h2>
+      <div id="admin-users"></div>
+    </div>
+    <div class="card">
+      <h2>新增账户</h2>
+      <div class="pw-form">
+        <input id="au-name" placeholder="用户名（3-20 字符）">
+        <input id="au-pass" type="password" placeholder="初始密码（至少 6 位）">
+        <button class="btn" onclick="doAddUser()">创建账户</button>
+      </div>
+    </div>
+  </section>
 </div>
 
 <!-- 汉堡抽屉 -->
@@ -76,21 +101,17 @@
     <div class="drawer-section">
       <h2>修改密码</h2>
       <div class="pw-form">
-        <input id="a-old" type="password" placeholder="原密码">
-        <input id="a-new" type="password" placeholder="新密码（至少 6 位）">
-        <input id="a-new2" type="password" placeholder="确认新密码">
-        <button class="btn" id="btn-change-pw">修改密码</button>
+        <input id="d-old" type="password" placeholder="原密码">
+        <input id="d-new" type="password" placeholder="新密码（至少 6 位）">
+        <input id="d-new2" type="password" placeholder="确认新密码">
+        <button class="btn" id="btn-dp-change">修改密码</button>
       </div>
     </div>
   </div>
-  <div id="drawer-admin-sections" class="drawer-section" style="display:none">
-    <h2>用户列表</h2>
-    <div id="admin-users"></div>
-    <div class="pw-form" style="margin-top:10px">
-      <input id="au-name" placeholder="用户名（3-20 字符）">
-      <input id="au-pass" type="password" placeholder="初始密码（至少 6 位）">
-      <button class="btn" id="btn-create-user">创建账户</button>
-    </div>
+  <div id="drawer-admin-sessions" class="drawer-section" style="display:none">
+    <h2>用户会话管理</h2>
+    <p class="note">按用户查看全部有效登录会话，可强制下线</p>
+    <div id="admin-session-list"></div>
   </div>
   <div class="drawer-footer">
     <button class="mini-btn warn" id="btn-delete">删除账号</button>
@@ -102,6 +123,7 @@
 <div class="tabbar">
   <div id="tab-add" class="active" data-page="add">记账</div>
   <div id="tab-stat" data-page="stat">报表</div>
+  <div id="tab-admin" data-page="admin" style="display:none">管理</div>
 </div>
 
 <div id="toast"></div>
@@ -143,6 +165,7 @@ function currentUser(){
 function switchPage(name){
   document.querySelectorAll('section').forEach(s=> s.classList.toggle('active', s.id === 'page-'+name));
   document.querySelectorAll('.tabbar > div').forEach(t=> t.classList.toggle('active', t.getAttribute('data-page') === name));
+  if(name === 'admin') loadAdmin();
 }
 document.querySelectorAll('.tabbar > div').forEach(t=>{
   t.addEventListener('click', ()=> switchPage(t.getAttribute('data-page')));
@@ -206,6 +229,11 @@ async function startApp(){
   const isAdmin = u && u.is_admin;
   $('user-name').textContent = u ? (u.username + (isAdmin ? ' · 管理员' : '')) : '';
   hideLogin();
+  $('tab-admin').style.display = isAdmin ? 'block' : 'none';
+  $('tab-add').style.display = isAdmin ? 'none' : 'block';
+  $('tab-stat').style.display = isAdmin ? 'none' : 'block';
+  $('drawer-user-sections').style.display = isAdmin ? 'none' : 'block';
+  if(isAdmin){ switchPage('admin'); return; }
   switchPage('add');
   // 加载分类树并渲染场景三级联动（记账页默认页）
   if(S.categories.length === 0){
@@ -225,9 +253,9 @@ function toggleDrawer(open){
     const u = currentUser();
     $('drawer-user').textContent = u ? (u.username + (u.is_admin ? ' · 管理员' : '')) : '';
     const isAdmin = u && u.is_admin;
-    $('drawer-admin-sections').style.display = isAdmin ? 'block' : 'none';
+    $('drawer-admin-sessions').style.display = isAdmin ? 'block' : 'none';
     $('drawer-user-sections').style.display = isAdmin ? 'none' : 'block';
-    if(isAdmin){ renderUsers(); } else { loadSessions(); }
+    if(isAdmin){ loadAdminSessions(); } else { loadSessions('session-list'); }
   }
 }
 $('hamburger').addEventListener('click', ()=> toggleDrawer());
@@ -244,18 +272,18 @@ async function doLogout(){
 }
 $('btn-logout').addEventListener('click', doLogout);
 
-// ---- 修改密码 ----
-$('btn-change-pw').addEventListener('click', async ()=>{
-  const old = $('a-old').value;
-  const n1 = $('a-new').value;
-  const n2 = $('a-new2').value;
+// ---- 修改密码（抽屉）----
+$('btn-dp-change').addEventListener('click', async ()=>{
+  const old = $('d-old').value;
+  const n1 = $('d-new').value;
+  const n2 = $('d-new2').value;
   if(!old){ toast('请输入原密码'); return; }
   if(!n1 || n1.length < 6){ toast('新密码至少 6 位'); return; }
   if(n1 !== n2){ toast('两次新密码不一致'); return; }
   try{
     await api('/api/auth/password', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ old_password: old, new_password: n1 }) });
-    $('a-old').value=''; $('a-new').value=''; $('a-new2').value='';
+    $('d-old').value=''; $('d-new').value=''; $('d-new2').value='';
     toast('密码已修改', true);
   }catch(e){ toast(e.message); }
 });
@@ -291,8 +319,8 @@ function deviceLabel(ua){
 function fmtTime(s){
   return s ? s.slice(0, 16).replace('T', ' ') : '';
 }
-async function loadSessions(){
-  const box = $('session-list');
+async function loadSessions(boxId){
+  const box = $(boxId);
   if(!box) return;
   let list = [];
   try{
@@ -314,39 +342,89 @@ async function loadSessions(){
       <div class="u-actions">
         ${s.is_current
           ? '<button class="mini-btn" disabled style="opacity:.4">当前使用</button>'
-          : `<button class="mini-btn danger" onclick="revokeSession('${s.token}')">强制下线</button>`}
+          : `<button class="mini-btn danger" onclick="revokeSession('${boxId}','${s.token}')">强制下线</button>`}
       </div>`;
     box.appendChild(row);
   });
 }
-async function revokeSession(token){
+async function revokeSession(boxId, token){
   if(!confirm('确定强制下线该设备？')) return;
   try{
     await api('/api/sessions/revoke', { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ token }) });
     toast('已强制下线', true);
-    loadSessions();
+    loadSessions(boxId);
   }catch(e){ toast(e.message); }
 }
 
-// ---- 管理员：用户列表 ----
-async function renderUsers(){
-  const box = $('admin-users');
-  if(!box) return;
-  let users = [];
+// ---- 管理员（复用旧版管理页）----
+function fmtKb(n){
+  n = n || 0;
+  if(n < 1024) return n + ' B';
+  return (n / 1024).toFixed(1) + ' KB';
+}
+async function loadAdmin(){
   try{
     const j = await api('/api/admin/users');
-    users = j.data || [];
-  }catch(e){ box.innerHTML = '<span class="note">'+e.message+'</span>'; return; }
-  if(!users.length){ box.innerHTML = '<span class="note">暂无用户</span>'; return; }
+    renderUsers(j.data);
+    loadAdminSessions();
+  }catch(e){ toast(e.message); }
+}
+function loadAdminSessions(){
+  const box = $('admin-session-list');
+  if(!box) return;
+  const curToken = localStorage.getItem('token');
+  api('/api/admin/sessions').then(j=>{
+    const groups = j.data || [];
+    if(!groups.length){ box.innerHTML = '<span class="note">当前无有效登录会话</span>'; return; }
+    box.innerHTML = '';
+    groups.forEach(g=>{
+      const head = document.createElement('div');
+      head.className = 'u-name';
+      head.style.marginTop = '10px';
+      head.textContent = g.username + (g.user_id === 0 ? '（管理员）' : '');
+      box.appendChild(head);
+      g.sessions.forEach(s=>{
+        const isCur = s.token === curToken;
+        const dev = (s.user_agent ? deviceLabel(s.user_agent) : '设备') + ' · ' + s.token.slice(0, 8) + '…';
+        const created = s.created_at ? s.created_at.slice(0, 16) : '';
+        const expires = s.expires_at ? s.expires_at.slice(0, 16) : '';
+        const row = document.createElement('div');
+        row.className = 'user-row';
+        row.innerHTML = `
+          <div class="u-name">${dev}${isCur ? '<span class="tag">当前</span>' : ''}</div>
+          <div class="u-meta">登录 ${created} · 过期 ${expires}</div>
+          <div class="u-actions">
+            ${isCur ? '<button class="mini-btn" disabled style="opacity:.4">当前使用</button>'
+                    : `<button class="mini-btn danger" onclick="forceLogoutAdmin('${s.token}')">强制下线</button>`}
+          </div>`;
+        box.appendChild(row);
+      });
+    });
+  }).catch(()=>{ box.innerHTML = '<span class="note">读取失败</span>'; });
+}
+async function forceLogoutAdmin(token){
+  if(!confirm('确定强制下线该会话？')) return;
+  try{
+    await api('/api/admin/sessions/revoke', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token }) });
+    toast('已强制下线', true);
+    loadAdminSessions();
+  }catch(e){ toast(e.message); }
+}
+async function renderUsers(users){
+  const box = $('admin-users');
   box.innerHTML = '';
+  if(!users.length){ box.innerHTML = '<span class="note">暂无用户</span>'; return; }
   users.forEach(u=>{
     const created = (u.created_at || '').slice(0, 10);
+    const dbSize = u.db_size ? (' · 数据 ' + fmtKb(u.db_size)) : '';
+    const meta = `注册 ${created} · ${u.record_count} 条记录${dbSize}`;
     const row = document.createElement('div');
     row.className = 'user-row';
     row.innerHTML = `
       <div class="u-name">${u.username}${u.is_admin ? '<span class="tag">管理员</span>' : ''}${u.is_active ? '' : '<span class="tag on">已禁用</span>'}</div>
-      <div class="u-meta">注册 ${created} · ${u.record_count} 条记录</div>
+      <div class="u-meta">${meta}</div>
       ${u.is_admin ? '' : `
         <div class="u-actions">
           <button class="mini-btn" onclick="toggleResetForm(${u.id})">重置密码</button>
@@ -383,7 +461,7 @@ async function toggleUser(id, disable){
     await api('/api/admin/users/' + (disable ? 'disable' : 'enable'), { method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({ user_id: id }) });
     toast(disable ? '已禁用' : '已启用', true);
-    renderUsers();
+    loadAdmin();
   }catch(e){ toast(e.message); }
 }
 async function delUser(id){
@@ -391,10 +469,24 @@ async function delUser(id){
   try{
     await api('/api/admin/users?user_id=' + id, { method:'DELETE' });
     toast('已删除', true);
-    renderUsers();
+    loadAdmin();
   }catch(e){ toast(e.message); }
 }
-$('btn-create-user').addEventListener('click', async ()=>{
+async function doChangePassword(){
+  const old = $('a-old').value;
+  const n1 = $('a-new').value;
+  const n2 = $('a-new2').value;
+  if(!old){ toast('请输入原密码'); return; }
+  if(!n1 || n1.length < 6){ toast('新密码至少 6 位'); return; }
+  if(n1 !== n2){ toast('两次新密码不一致'); return; }
+  try{
+    await api('/api/auth/password', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ old_password: old, new_password: n1 }) });
+    $('a-old').value=''; $('a-new').value=''; $('a-new2').value='';
+    toast('密码已修改', true);
+  }catch(e){ toast(e.message); }
+}
+async function doAddUser(){
   const name = $('au-name').value.trim();
   const pass = $('au-pass').value;
   if(!name || name.length < 3 || name.length > 20){ toast('用户名需 3-20 个字符'); return; }
@@ -404,9 +496,9 @@ $('btn-create-user').addEventListener('click', async ()=>{
       body: JSON.stringify({ username: name, password: pass }) });
     $('au-name').value=''; $('au-pass').value='';
     toast('已创建账户', true);
-    renderUsers();
+    loadAdmin();
   }catch(e){ toast(e.message); }
-});
+}
 
 // ---- 场景三级联动组件（记账页）----
 const S = { categories: [], scene: null, sub: null, merchant: null };
@@ -505,11 +597,16 @@ $('btn-merchant-add').addEventListener('click', async ()=>{
 (async function initAuth(){
   const u = currentUser();
   if(!localStorage.getItem('token') || !u){ showLogin(); return; }
+  // 有凭证则立即进入主界面（避免刷新时闪登录页），后台校验有效性
+  startApp();
   try{
     const me = await api('/api/auth/me');
     localStorage.setItem('user', JSON.stringify(me.data));
-    await startApp();
-  }catch(e){ showLogin(); }
+  }catch(e){
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    showLogin();
+  }
 })();
 </script>
 </body>
