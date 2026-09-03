@@ -46,6 +46,9 @@
 .amount-input{ width:100%; box-sizing:border-box; padding:10px; font-size:18px; text-align:right; border:1px solid var(--line); border-radius:8px; }
 .spinner{ display:inline-block; width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; vertical-align:-2px; margin-right:6px; animation:sp .8s linear infinite; }
 @keyframes sp{ to{ transform:rotate(360deg); } }
+.sel-line{ margin:8px 0 8px; font-size:13px; color:var(--text); line-height:1.9; }
+.sel-line .muted{ color:var(--muted); }
+.fg-row{ display:flex; flex-wrap:wrap; gap:8px 16px; align-items:flex-start; }
 *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body{ margin:0; padding:0; background:var(--bg); color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }

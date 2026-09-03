@@ -184,15 +184,35 @@ def read_xlsx(data):
 COLUMNS = ["日期", "时间", "金额", "分类", "消费场景", "渠道", "备注"]
 
 
+def _category_paths(conn):
+    """返回 cid -> 全路径「一级/子项[/商家]」的闭包，解决子项重名无法还原的问题。"""
+    cats = {c["id"]: (c["name"] or "", c["parent_id"]) for c in
+            conn.execute("SELECT id, name, parent_id FROM dim_category").fetchall()}
+
+    def path_of(cid):
+        parts, cur, seen = [], cid, set()
+        while cur and cur not in seen:
+            seen.add(cur)
+            nm, pid = cats.get(cur, ("", None))
+            parts.append(nm)
+            cur = pid
+        return "/".join(reversed(parts))
+
+    return path_of
+
+
 def export_records(uid):
-    """导出当前用户全部记录为 .xlsx 字节。"""
+    """导出当前用户全部记录为 .xlsx 字节。
+
+    保存记账时输入的全部字段：日期/时间/金额/分类(全路径)/消费场景/渠道/备注。
+    """
     conn = get_user_conn(uid)
+    path_of = _category_paths(conn)
     try:
         rows_db = conn.execute(
-            """SELECT r.date, r.time, r.amount, c.name AS category,
+            """SELECT r.date, r.time, r.amount, r.category_id,
                       m.name AS motive, ch.name AS channel, r.note
                FROM records r
-               LEFT JOIN dim_category c ON c.id=r.category_id
                LEFT JOIN dim_motive m ON m.id=r.motive_id
                LEFT JOIN dim_channel ch ON ch.id=r.channel_id
                ORDER BY r.date, r.time""").fetchall()
@@ -201,7 +221,8 @@ def export_records(uid):
     data = []
     for x in rows_db:
         data.append([x["date"], x["time"] or "", x["amount"],
-                     x["category"], x["motive"] or "", x["channel"] or "", x["note"] or ""])
+                     path_of(x["category_id"]), x["motive"] or "",
+                     x["channel"] or "", x["note"] or ""])
     return write_xlsx(COLUMNS, data, "记账记录")
 
 
@@ -219,13 +240,16 @@ def import_records(uid, raw):
 
     conn = get_user_conn(uid)
     try:
-        # 叶子分类：name -> id（仅取无子项的二级或三级）
-        leaf_ids = {}
-        for c in conn.execute("SELECT id, name, parent_id, level FROM dim_category").fetchall():
+        path_of = _category_paths(conn)
+        # 全路径查表 + 叶子名回退（兼容旧导出格式、兼容重名需唯一）
+        leaf_by_path, leaf_by_name = {}, {}
+        for c in conn.execute(
+                "SELECT id, name, parent_id, level FROM dim_category").fetchall():
             has_child = conn.execute(
                 "SELECT 1 FROM dim_category WHERE parent_id=?", (c["id"],)).fetchone()
             if c["level"] >= 2 and not has_child:
-                leaf_ids.setdefault(c["name"], []).append(c["id"])
+                leaf_by_path[path_of(c["id"])] = c["id"]
+                leaf_by_name.setdefault(c["name"], []).append(c["id"])
         motive_map = {r["name"]: r["id"]
                       for r in conn.execute("SELECT id, name FROM dim_motive").fetchall()}
         channel_map = {r["name"]: {"id": r["id"], "balance": r["balance"]}
@@ -261,13 +285,16 @@ def import_records(uid, raw):
         if not date:
             skipped += 1
             continue
-        # 分类（叶子）
+        # 分类（叶子）：优先按全路径，其次按唯一叶子名
         cname = resolve_field(row, "分类")
         cat_id = None
         if cname:
-            ids = leaf_ids.get(cname, [])
-            if len(ids) == 1:
-                cat_id = ids[0]
+            if cname in leaf_by_path:
+                cat_id = leaf_by_path[cname]
+            else:
+                ids = leaf_by_name.get(cname, [])
+                if len(ids) == 1:
+                    cat_id = ids[0]
         if cat_id is None:
             skipped += 1
             skip_reasons.append("分类「%s」无法定位叶子" % cname)
