@@ -33,15 +33,40 @@
     </div>
   </header>
 
-  <!-- 记账页（仅记账 card） -->
+  <!-- 记账页（旧版样式 + 重构字段） -->
   <div class="card page active" id="page-add">
-    <div class="page-title">记账</div>
-    <div class="field">
-      <label>场景</label>
-      <select id="scene-select"></select>
+    <div class="label">金额（支出填负值，收入填正值）</div>
+    <input id="f-amount" class="amount-input" type="number" step="0.01" placeholder="0.00">
+    <div class="row">
+      <div><input id="f-date" type="date"></div>
+      <div><input id="f-time" type="time"></div>
     </div>
-    <div class="chips" id="sub-chips"></div>
-    <div class="sel-hint" id="sel-hint"></div>
+    <div class="label" style="margin-top:12px">场景（一级分类）</div>
+    <div class="chips" id="chips-main"></div>
+    <div class="addbar" onclick="toggleMainAdd()">＋ 新增场景标签</div>
+    <div class="addform" id="addm" style="display:none">
+      <input id="m-name" placeholder="名称，如：购物">
+      <button class="mini-btn" onclick="doAddMain()">添加一级</button>
+    </div>
+    <div class="label" style="margin-top:12px">子项（二级分类）</div>
+    <div class="chips" id="chips-sub"></div>
+    <div class="addbar" onclick="toggleSubAdd()">＋ 新增子项标签</div>
+    <div class="addform" id="adds" style="display:none">
+      <input id="s-name" placeholder="名称，如：零食">
+      <button class="mini-btn" onclick="doAddSub()">添加二级</button>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div><select id="f-motive"></select></div>
+      <div><select id="f-channel"></select></div>
+    </div>
+    <div class="addbar" onclick="toggleChannelAdd()">＋ 新建渠道</div>
+    <div class="addform" id="addc" style="display:none">
+      <input id="c-name" placeholder="渠道名称">
+      <button class="mini-btn" onclick="doAddChannel()">添加渠道</button>
+    </div>
+    <div class="label" style="margin-top:12px">备注</div>
+    <input id="f-note" type="text" placeholder="选填">
+    <button class="btn" onclick="submitRecord()">保存</button>
   </div>
 
   <!-- 报表页（仅报表 card） -->
@@ -217,11 +242,13 @@ async function startApp(){
   $('drawer-user-sections').style.display = isAdmin ? 'none' : 'block';
   if(isAdmin){ switchPage('admin'); return; }
   switchPage('add');
-  // 加载分类树并渲染场景三级联动（记账页默认页）
-  if(S.categories.length === 0){
-    try{ await fetchCategories(); }catch(e){ toast(e.message); }
+  await initAdd();
+}
+async function initAdd(){
+  if(!S.init){
+    S.init = true;
+    await S.load();
   }
-  renderSceneSelect();
 }
 
 // ---- 汉堡抽屉 ----
@@ -468,8 +495,21 @@ async function doAddUser(){
   }catch(e){ toast(e.message); }
 }
 
-// ---- 场景分类组件（记账页）：场景下拉 → 二级子项 ----
-const S = { categories: [], scene: null, sub: null };
+// ---- 记账页：一级/二级分类 + 消费场景 + 渠道 ----
+const S = { categories: [], init: false };
+let curMain = null;
+
+S.load = async function(){
+  await Promise.allSettled([loadCategories(), loadDict()]);
+  if(!$('f-date').value) $('f-date').value = todayStr();
+};
+
+function todayStr(){
+  const d = new Date();
+  const p = n => (n < 10 ? '0' : '') + n;
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+function mainOf(id){ return S.categories.find(c => c.id === id); }
 function findCat(id, arr){
   if(arr === undefined) arr = S.categories;
   for(const n of arr){
@@ -479,56 +519,277 @@ function findCat(id, arr){
   }
   return null;
 }
-async function fetchCategories(){
+async function loadCategories(){
   const j = await api('/api/categories');
   S.categories = j.data || [];
+  renderMainChips();
 }
-function renderSceneSelect(sceneId){
-  const sel = $('scene-select');
-  sel.innerHTML = '';
-  S.categories.forEach(s=>{
-    const o = document.createElement('option');
-    o.value = s.id; o.textContent = s.name;
-    sel.appendChild(o);
-  });
-  sel.value = sceneId || (S.categories[0] && S.categories[0].id) || '';
-  if(sel.value) onSceneChange(parseInt(sel.value, 10));
-}
-function renderChips(box, items, activeId, onClick){
+function renderMainChips(){
+  const box = $('chips-main');
   box.innerHTML = '';
-  items.forEach(n=>{
-    const c = document.createElement('span');
-    c.className = 'chip' + (n.id === activeId ? ' on' : '');
-    c.textContent = n.name;
-    c.addEventListener('click', ()=> onClick(n));
-    box.appendChild(c);
+  S.categories.forEach(c => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.dataset.id = c.id;
+    chip.dataset.used = c.used ? '1' : '0';
+    chip.textContent = c.name;
+    chip.onclick = ()=> selectMain(c.id);
+    bindChipDelete(chip);
+    box.appendChild(chip);
   });
+  if(S.categories.length && !mainOf(curMain)) selectMain(S.categories[0].id);
+  else selectMain(curMain);
 }
-function onSceneChange(sceneId){
-  const scene = findCat(sceneId);
-  if(!scene) return;
-  S.scene = scene; S.sub = null;
-  renderChips($('sub-chips'), scene.children, null, onSubClick);
-  if(scene.children.length){
-    // 默认选中第一个二级子项
-    onSubClick(scene.children[0]);
-  } else {
-    updateHint();
+function selectMain(id){
+  curMain = id;
+  document.querySelectorAll('#chips-main .chip').forEach(ch=>{
+    ch.classList.toggle('active', Number(ch.dataset.id) === id);
+  });
+  renderSubChips(id);
+}
+function renderSubChips(id){
+  const m = mainOf(id);
+  const box = $('chips-sub');
+  box.innerHTML = '';
+  if(!m) return;
+  m.children.forEach(c => {
+    const chip = document.createElement('div');
+    chip.className = 'chip';
+    chip.textContent = c.name;
+    chip.dataset.id = c.id;
+    chip.dataset.used = c.used ? '1' : '0';
+    chip.onclick = ()=>{
+      document.querySelectorAll('#chips-sub .chip').forEach(x=>x.classList.remove('active'));
+      chip.classList.add('active');
+    };
+    bindChipDelete(chip);
+    box.appendChild(chip);
+  });
+  setTimeout(()=>{ if(box.firstChild) box.firstChild.classList.add('active'); }, 0);
+}
+
+// ---- 记一笔页内联新增分类 ----
+function toggleMainAdd(){ $('addm').style.display = $('addm').style.display === 'none' ? 'flex' : 'none'; }
+function toggleSubAdd(){ $('adds').style.display = $('adds').style.display === 'none' ? 'flex' : 'none'; }
+async function doAddMain(){
+  const name = $('m-name').value.trim();
+  if(!name){ toast('请输入名称'); return; }
+  try{
+    await api('/api/categories', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name }) });
+    $('m-name').value=''; $('addm').style.display='none';
+    await loadCategories();
+    toast('已添加一级分类', true);
+  }catch(e){ toast(e.message); }
+}
+async function doAddSub(){
+  if(!curMain){ toast('请先选择一级分类'); return; }
+  const name = $('s-name').value.trim();
+  if(!name){ toast('请输入名称'); return; }
+  try{
+    await api('/api/categories', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, parent_id: curMain }) });
+    $('s-name').value=''; $('adds').style.display='none';
+    await loadCategories();
+    selectMain(curMain);
+    toast('已添加二级分类', true);
+  }catch(e){ toast(e.message); }
+}
+
+// ---- 分类标签长按 / 右键删除（红=可删 灰=被用不可删）----
+let delTimer = null;
+function closeDelMark(){ document.querySelectorAll('.del-mark.show').forEach(m=>m.classList.remove('show')); }
+function showDelMark(chip){
+  closeDelMark();
+  if(window.getSelection && window.getSelection().removeAllRanges) window.getSelection().removeAllRanges();
+  const mark = chip.querySelector('.del-mark');
+  if(!mark) return;
+  mark.classList.toggle('red', chip.dataset.used !== '1');
+  mark.classList.toggle('gray', chip.dataset.used === '1');
+  mark.classList.add('show');
+}
+function bindChipDelete(chip){
+  chip.addEventListener('touchstart', ()=>{
+    delTimer = setTimeout(()=> showDelMark(chip), 500);
+  }, { passive: true });
+  ['touchend','touchmove','touchcancel'].forEach(ev=>{
+    chip.addEventListener(ev, ()=> clearTimeout(delTimer), { passive: true });
+  });
+  chip.addEventListener('contextmenu', e=>{ e.preventDefault(); showDelMark(chip); });
+  const mark = document.createElement('span');
+  mark.className = 'del-mark';
+  mark.innerHTML = '✕';
+  mark.onclick = e=>{
+    e.stopPropagation();
+    delChip(Number(chip.dataset.id), chip.dataset.used === '1');
+  };
+  chip.appendChild(mark);
+}
+async function delChip(id, used){
+  if(used){ toast('该分类已被记账使用，无法删除'); return; }
+  try{
+    await api('/api/categories?id=' + id, { method:'DELETE' });
+    if(curMain === id) curMain = S.categories.length ? S.categories[0].id : null;
+    await loadCategories();
+    toast('已删除', true);
+  }catch(e){ toast(e.message); }
+}
+
+// ---- 分类标签拖动排序 ----
+let drag = null;
+function enableChipDrag(box, isMain){
+  box.addEventListener('pointerdown', e=>{
+    if(e.button !== undefined && e.button !== 0) return;
+    const chip = e.target.closest ? e.target.closest('.chip') : null;
+    if(!chip || chip.classList.contains('drag-marker')) return;
+    if(e.target.classList.contains('del-mark')) return;
+    closeDelMark();
+    drag = { box, chip, isMain, id: e.pointerId, started: false, sx: e.clientX, sy: e.clientY };
+    if(box.setPointerCapture){ try{ box.setPointerCapture(e.pointerId); }catch(err){} }
+  });
+  box.addEventListener('pointermove', e=>{
+    if(!drag || drag.box !== box || e.pointerId !== drag.id) return;
+    if(!drag.started){
+      if(Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) < 6) return;
+      startGhost(e);
+    }
+    drag.chip.style.transform = `translate(${e.clientX - drag.grabDX}px, ${e.clientY - drag.grabDY}px)`;
+    relocateMarker(e);
+  });
+  const end = e=>{
+    if(!drag || drag.box !== box || e.pointerId !== drag.id) return;
+    finishDrag(e);
+  };
+  box.addEventListener('pointerup', end);
+  box.addEventListener('pointercancel', end);
+}
+function startGhost(e){
+  const d = drag;
+  d.started = true;
+  if(delTimer) clearTimeout(delTimer);
+  closeDelMark();
+  const r = d.chip.getBoundingClientRect();
+  d.grabDX = e.clientX - r.left;
+  d.grabDY = e.clientY - r.top;
+  d.marker = document.createElement('div');
+  d.marker.className = 'chip drag-marker';
+  d.chip.insertAdjacentElement('beforebegin', d.marker);
+  d.chip.style.cssText = 'position:fixed;left:0;top:0;z-index:99;pointer-events:none;opacity:.85;'
+    + 'box-shadow:0 6px 18px rgba(0,0,0,.18);transition:none;'
+    + `transform:translate(${e.clientX - d.grabDX}px, ${e.clientY - d.grabDY}px)`;
+}
+function relocateMarker(e){
+  const d = drag;
+  const under = document.elementFromPoint(e.clientX, e.clientY);
+  const target = under && under.closest ? under.closest('.chip') : null;
+  if(!target || target === d.chip || target === d.marker) return;
+  const r = target.getBoundingClientRect();
+  const cx = r.left + r.width/2, cy = r.top + r.height/2;
+  const before = (Math.abs(e.clientY - cy) <= r.height/2) ? (e.clientX < cx) : (e.clientY < cy);
+  d.box.insertBefore(d.marker, before ? target : target.nextSibling);
+}
+function finishDrag(e){
+  const d = drag;
+  drag = null;
+  if(!d.started) return;
+  const chip = d.chip, marker = d.marker;
+  chip.style.cssText = '';
+  d.box.insertBefore(chip, marker);
+  marker.remove();
+  const ids = Array.from(d.box.querySelectorAll('.chip')).map(c=> Number(c.dataset.id));
+  persistOrder(d.isMain, ids);
+}
+async function persistOrder(isMain, ids){
+  const body = isMain ? { ids } : { ids, parent_id: curMain };
+  try{
+    await api('/api/categories/reorder', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(body) });
+    await loadCategories();
+  }catch(err){ toast(err.message); await loadCategories(); }
+}
+enableChipDrag($('chips-main'), true);
+enableChipDrag($('chips-sub'), false);
+
+// ---- 消费场景 & 渠道字典 ----
+let motivesLoaded = false, channelsLoaded = false;
+function fmtAmount(v){
+  v = Number(v || 0);
+  return (v > 0 ? '+' : '') + v.toFixed(2);
+}
+async function loadDict(){
+  if(!motivesLoaded){
+    try{
+      const j = await api('/api/motives');
+      const sel = $('f-motive'); sel.innerHTML = '';
+      (j.data || []).forEach(m=>{
+        const o = document.createElement('option');
+        o.value = m.id; o.textContent = m.name;
+        sel.appendChild(o);
+      });
+      if(j.data && j.data.length) sel.value = j.data[0].id; // 默认「独自消费」
+      motivesLoaded = true;
+    }catch(e){ toast(e.message); }
+  }
+  if(!channelsLoaded){
+    try{
+      const j = await api('/api/channels');
+      const sel = $('f-channel');
+      const keep = sel.value;
+      sel.innerHTML = '';
+      (j.data || []).forEach(c=>{
+        const o = document.createElement('option');
+        o.value = c.id; o.textContent = c.name + '（' + fmtAmount(c.balance) + '）';
+        sel.appendChild(o);
+      });
+      if(!keep){
+        sel.value = j.last_used_channel_id || (j.data && j.data[0] && j.data[0].id) || '';
+      }
+      channelsLoaded = true;
+    }catch(e){ toast(e.message); }
   }
 }
-function onSubClick(sub){
-  S.sub = sub;
-  renderChips($('sub-chips'), S.scene.children, sub.id, onSubClick);
-  updateHint();
+
+// ---- 新建渠道 ----
+function toggleChannelAdd(){ $('addc').style.display = $('addc').style.display === 'none' ? 'flex' : 'none'; }
+async function doAddChannel(){
+  const name = $('c-name').value.trim();
+  if(!name){ toast('请输入渠道名称'); return; }
+  try{
+    const j = await api('/api/channels', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name }) });
+    $('c-name').value=''; $('addc').style.display='none';
+    channelsLoaded = false;
+    await loadDict();
+    $('f-channel').value = j.data.id;
+    toast('已添加渠道', true);
+  }catch(e){ toast(e.message); }
 }
-function updateHint(){
-  const sel = S.sub
-    ? (S.sub.name + (S.scene ? '（' + S.scene.name + '）' : ''))
-    : (S.scene ? S.scene.name : '');
-  $('sel-hint').textContent = '当前分类：' + sel;
+
+// ---- 保存 ----
+async function submitRecord(){
+  const amount = parseFloat($('f-amount').value);
+  if(isNaN(amount) || amount === 0){ toast('请输入有效金额'); return; }
+  const selSub = document.querySelector('#chips-sub .chip.active');
+  if(!selSub || !selSub.dataset.id){ toast('请选择二级分类'); return; }
+  const date = $('f-date').value;
+  if(!date){ toast('请选择日期'); return; }
+  const payload = {
+    date,
+    time: $('f-time').value || '',
+    amount,
+    category_id: Number(selSub.dataset.id),
+    motive_id: Number($('f-motive').value),
+    channel_id: Number($('f-channel').value),
+    note: $('f-note').value.trim()
+  };
+  try{
+    await api('/api/records', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload) });
+    $('f-amount').value=''; $('f-note').value='';
+    channelsLoaded = false; loadDict(); // 刷新渠道余额显示与「记住上一次渠道」
+    toast('已保存', true);
+  }catch(e){ toast(e.message); }
 }
-// 场景下拉变更监听（一次性绑定，避免叠加）
-$('scene-select').addEventListener('change', ()=> onSceneChange(parseInt($('scene-select').value, 10)));
 
 // ---- 初始化 ----
 (async function initAuth(){
