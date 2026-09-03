@@ -82,11 +82,17 @@ def add_record(uid, data):
 
     conn = get_user_conn(uid)
     try:
-        # 校验二级分类（leaf）存在
+        # 校验分类必须是叶子：二级且无子，或三级
         cat = conn.execute(
-            "SELECT 1 FROM dim_category WHERE id=? AND level=2", (category_id,)).fetchone()
+            "SELECT id, level FROM dim_category WHERE id=?", (category_id,)).fetchone()
         if not cat:
-            return None, "请选择有效的二级分类"
+            return None, "分类不存在"
+        if cat["level"] == 2:
+            if conn.execute("SELECT 1 FROM dim_category WHERE parent_id=?",
+                            (category_id,)).fetchone():
+                return None, "该二级分类下还有子分类，请选择最细一级"
+        elif cat["level"] != 3:
+            return None, "请选择叶子子分类"
         if motive_id is not None and not conn.execute(
                 "SELECT 1 FROM dim_motive WHERE id=?", (motive_id,)).fetchone():
             return None, "消费场景无效"
