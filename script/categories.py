@@ -36,6 +36,12 @@ def get_categories(uid):
             nodes[n["parent_id"]]["children"].append(n)
         else:
             roots.append(n)
+    # used 上溯：任一子项被引用则该节点视为「不可删」
+    def _propagate(n):
+        n["used"] = n["used"] or any(_propagate(c) for c in n["children"])
+        return n["used"]
+    for r in roots:
+        _propagate(r)
     return roots
 
 
@@ -68,11 +74,33 @@ def add_category(uid, name, parent_id):
 
 
 def delete_category(uid, category_id):
-    """删除分类。已被记录引用或存在子分类时拒绝删除。"""
+    """删除分类。
+
+    - 一级场景：若其名下所有子项都未被记录引用，则级联删除该一级分类及其全部子项；
+      若任一子项被引用则拒绝。一级本身不直接存记录（记录只指向叶子子项）。
+    - 非一级：沿用旧规则——被引用或存在子分类时拒绝。
+    """
     conn = get_user_conn(uid)
     try:
-        if not conn.execute("SELECT 1 FROM dim_category WHERE id=?", (category_id,)).fetchone():
+        cat = conn.execute(
+            "SELECT id, parent_id, level FROM dim_category WHERE id=?", (category_id,)).fetchone()
+        if not cat:
             return None, "分类不存在"
+        if (cat["parent_id"] or 0) == 0 and cat["level"] == 1:
+            child_ids = [r["id"] for r in conn.execute(
+                "SELECT id FROM dim_category WHERE parent_id=?", (category_id,)).fetchall()]
+            if child_ids:
+                mark = ",".join("?" * len(child_ids))
+                used = conn.execute(
+                    "SELECT 1 FROM records WHERE category_id IN ({}) LIMIT 1".format(mark),
+                    tuple(child_ids)).fetchone()
+                if used:
+                    return None, "该场景下存在已被记账引用的子项，不可删除"
+                conn.execute("DELETE FROM dim_category WHERE id IN ({})".format(mark),
+                             tuple(child_ids))
+            conn.execute("DELETE FROM dim_category WHERE id=?", (category_id,))
+            conn.commit()
+            return {"id": category_id, "deleted_subitems": len(child_ids)}, None
         if conn.execute("SELECT 1 FROM dim_category WHERE parent_id=?", (category_id,)).fetchone():
             return None, "该分类存在子分类，请先删除子分类"
         if conn.execute("SELECT 1 FROM records WHERE category_id=?", (category_id,)).fetchone():
