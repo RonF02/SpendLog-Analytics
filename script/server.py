@@ -12,6 +12,7 @@
 import argparse
 import json
 import os
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from admin import (list_users, change_password, admin_reset_password,
@@ -25,6 +26,7 @@ from records import list_motives, channels_info, add_channel, add_record
 from statistics import aggregate
 from budgets import list_budgets, set_budget
 from balance import list_balance, calibrate
+from excel import export_records, import_records
 from db import init_accounts_db
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录（本文件位于 script/）
@@ -164,6 +166,17 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/balance":
                 json_response(self, {"code": 0, "message": "ok",
                                      "data": list_balance(user["id"])})
+            elif path == "/api/export":
+                body = export_records(user["id"])
+                self.send_response(200)
+                self.send_header("Content-Type",
+                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                self.send_header("Content-Disposition",
+                                 'attachment; filename="spendlog_{}.xlsx"'.format(
+                                     datetime.now().strftime("%Y%m%d")))
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
             else:
                 json_response(self, {"code": 404, "message": "Not Found"}, 404)
         else:
@@ -171,6 +184,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = self.path.split("?")[0]
+        if path == "/api/import":
+            user = check_auth(self._bearer_token())
+            if not user:
+                json_response(self, {"code": 401, "message": "未登录或登录已过期"}, 401)
+                return
+            try:
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length) if length > 0 else b""
+            except Exception:
+                json_response(self, {"code": 1, "message": "读取文件失败"}, 400)
+                return
+            result = import_records(user["id"], raw)
+            json_response(self, {"code": 0, "message": "ok", "data": result})
+            return
         try:
             payload = self._read_json()
         except Exception:

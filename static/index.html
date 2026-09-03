@@ -118,6 +118,14 @@
         <button class="btn" id="btn-dp-change">修改密码</button>
       </div>
     </div>
+    <div class="drawer-section">
+      <h2>Excel 导入 / 导出</h2>
+      <p class="note">导出全部记录为 .xlsx；导入需与导出列一致（日期/时间/金额/分类/消费场景/渠道/备注）</p>
+      <div class="row" style="gap:8px">
+        <button class="btn" id="btn-export">导出 Excel</button>
+        <label class="btn filebtn">导入 Excel<input id="f-xlsx" type="file" accept=".xlsx" style="display:none" onchange="importXlsx(this)"></label>
+      </div>
+    </div>
   </div>
   <div id="drawer-admin-sessions" class="drawer-section" style="display:none">
     <h2>用户会话管理</h2>
@@ -517,7 +525,38 @@ $('btn-delete').addEventListener('click', async ()=>{
   }catch(e){ toast(e.message); }
 });
 
-// ---- 会话管理 ----
+// ---- Excel 导出 / 导入 ----
+$('btn-export').addEventListener('click', async ()=>{
+  try{
+    const token = localStorage.getItem('token') || '';
+    const r = await fetch('/api/export', { headers:{ Authorization:'Bearer '+token } });
+    if(!r.ok){ const j = await r.json().catch(()=>({})); toast(j.message || '导出失败'); return; }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    const d = new Date();
+    a.href = url;
+    a.download = 'spendlog_' + d.getFullYear() + String(d.getMonth()+1).padStart(2,'0') + String(d.getDate()).padStart(2,'0') + '.xlsx';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast('已导出 Excel', true);
+  }catch(e){ toast(e.message || '导出失败'); }
+});
+async function importXlsx(input){
+  const file = input.files && input.files[0];
+  if(!file) return;
+  try{
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const token = localStorage.getItem('token') || '';
+    const r = await fetch('/api/import', { method:'POST', headers:{ Authorization:'Bearer '+token,
+      'Content-Type':'application/octet-stream' }, body: bytes });
+    const j = await r.json();
+    if(!r.ok){ toast(j.message || '导入失败'); return; }
+    if(j.data && j.data.errors) toast('已导入 ' + j.data.added + ' 条，跳过 ' + j.data.skipped + ' 条：' + j.data.errors);
+    else toast('已导入 ' + (j.data? j.data.added : 0) + ' 条记录', true);
+  }catch(e){ toast(e.message || '导入失败'); }
+  input.value = '';
+}
 function deviceLabel(ua){
   ua = ua || '';
   const name =
