@@ -60,7 +60,7 @@
   <div id="drawer-user-sections">
     <div class="drawer-section">
       <h2>会话管理</h2>
-      <p class="note">查看已登录设备，可强制下线（后续阶段接入）</p>
+      <p class="note">查看已登录设备，可强制下线</p>
       <div id="session-list"></div>
     </div>
     <div class="drawer-section">
@@ -75,8 +75,12 @@
   </div>
   <div id="drawer-admin-sections" class="drawer-section" style="display:none">
     <h2>用户列表</h2>
-    <p class="note">管理员用户管理（后续阶段接入）</p>
     <div id="admin-users"></div>
+    <div class="pw-form" style="margin-top:10px">
+      <input id="au-name" placeholder="用户名（3-20 字符）">
+      <input id="au-pass" type="password" placeholder="初始密码（至少 6 位）">
+      <button class="btn" id="btn-create-user">创建账户</button>
+    </div>
   </div>
   <div class="drawer-footer">
     <button class="mini-btn warn" id="btn-delete">删除账号</button>
@@ -94,8 +98,38 @@
 
 <script>
 const $ = id => document.getElementById(id);
+function toast(msg, ok){
+  const t = $('toast');
+  t.style.background = ok ? 'rgba(0,180,90,.85)' : 'rgba(0,0,0,.75)';
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=> t.style.display='none', 1800);
+}
 
-// ---- 底部 Tab 切换（阶段 0 仅切换本地视图）----
+// ---- API 封装 ----
+async function api(path, opts){
+  opts = opts || {};
+  opts.headers = opts.headers || {};
+  const token = localStorage.getItem('token');
+  if(token) opts.headers['Authorization'] = 'Bearer '+token;
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if(r.status===401 && path.indexOf('/api/auth/')!==0){
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    showLogin();
+    throw new Error(j.message || '未登录或登录已过期');
+  }
+  if(!r.ok) throw new Error(j.message || '请求失败');
+  return j;
+}
+
+function currentUser(){
+  try{ return JSON.parse(localStorage.getItem('user') || 'null'); }catch(e){ return null; }
+}
+
+// ---- 底部 Tab ----
 function switchPage(name){
   document.querySelectorAll('section').forEach(s=> s.classList.toggle('active', s.id === 'page-'+name));
   document.querySelectorAll('.tabbar > div').forEach(t=> t.classList.toggle('active', t.getAttribute('data-page') === name));
@@ -104,11 +138,11 @@ document.querySelectorAll('.tabbar > div').forEach(t=>{
   t.addEventListener('click', ()=> switchPage(t.getAttribute('data-page')));
 });
 
-// ---- 登录 / 注册（阶段 0 仅本地交互，认证接口后续接入）----
+// ---- 登录 / 注册 ----
 let authMode = 'login';
-function setFeedback(msg){
-  $('login-feedback').textContent = msg || '';
-}
+function showLogin(){ $('login-overlay').style.display='flex'; }
+function hideLogin(){ $('login-overlay').style.display='none'; }
+function setFeedback(msg){ $('login-feedback').textContent = msg || ''; }
 function toggleAuthMode(){
   authMode = authMode === 'login' ? 'register' : 'login';
   const isReg = authMode === 'register';
@@ -118,8 +152,7 @@ function toggleAuthMode(){
   $('login-toggle').textContent = isReg ? '已有账号？去登录' : '首次使用？注册账号';
   setFeedback('');
 }
-function doAuth(){
-  // 认证接口将在阶段 2 接入，此处仅做前端校验演示
+async function doAuth(){
   const username = $('u-name').value.trim();
   const password = $('u-pass').value;
   setFeedback('');
@@ -127,24 +160,44 @@ function doAuth(){
   if(authMode === 'register'){
     const confirm = $('u-pass2').value;
     if(!confirm || confirm !== password){ setFeedback('两次输入的密码不一致'); return; }
-    setFeedback('注册功能将在阶段 2 接入');
+    try{
+      await api('/api/auth/register', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ username, password, confirm_password: confirm }) });
+      setFeedback('注册成功，请登录');
+      toggleAuthMode();
+    }catch(e){ setFeedback(e.message); }
     return;
   }
-  setFeedback('登录功能将在阶段 2 接入');
+  try{
+    const j = await api('/api/auth/login', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username, password }) });
+    localStorage.setItem('token', j.data.token);
+    localStorage.setItem('user', JSON.stringify(j.data.user));
+    hideLogin();
+    await startApp();
+  }catch(e){ setFeedback(e.message); }
 }
 $('login-btn').addEventListener('click', doAuth);
 $('login-toggle').addEventListener('click', toggleAuthMode);
-// 回车键：用户名→密码→提交（阶段 0 先本地聚焦流转）
+// 回车键流转：用户名→密码→（注册时）确认→提交
 const loginFields = ['u-name', 'u-pass', 'u-pass2'];
 loginFields.forEach((id, i)=>{
   $(id).addEventListener('keydown', e=>{
     if(e.key !== 'Enter') return;
     e.preventDefault();
-    if(authMode === 'register' && i < 2){ $(loginFields[i+1]).focus(); return; }
-    if(i < 1){ $('u-pass').focus(); return; }
+    if(i < loginFields.length-1 && (i < 1 || authMode==='register')){ $(loginFields[i+1]).focus(); return; }
     doAuth();
   });
 });
+
+// ---- 启动主界面 ----
+async function startApp(){
+  const u = currentUser();
+  const isAdmin = u && u.is_admin;
+  $('user-name').textContent = u ? (u.username + (isAdmin ? ' · 管理员' : '')) : '';
+  hideLogin();
+  switchPage('add');
+}
 
 // ---- 汉堡抽屉 ----
 function toggleDrawer(open){
@@ -154,30 +207,202 @@ function toggleDrawer(open){
   m.classList.toggle('show', show);
   document.body.style.overflow = show ? 'hidden' : '';
   if(show){
-    const u = JSON.parse(localStorage.getItem('user') || 'null');
+    const u = currentUser();
     $('drawer-user').textContent = u ? (u.username + (u.is_admin ? ' · 管理员' : '')) : '';
-    const admin = u && u.is_admin;
-    $('drawer-admin-sections').style.display = admin ? 'block' : 'none';
-    $('drawer-user-sections').style.display = admin ? 'none' : 'block';
+    const isAdmin = u && u.is_admin;
+    $('drawer-admin-sections').style.display = isAdmin ? 'block' : 'none';
+    $('drawer-user-sections').style.display = isAdmin ? 'none' : 'block';
+    if(isAdmin){ renderUsers(); } else { loadSessions(); }
   }
 }
 $('hamburger').addEventListener('click', ()=> toggleDrawer());
 $('drawer-close').addEventListener('click', ()=> toggleDrawer(false));
 $('drawer-mask').addEventListener('click', ()=> toggleDrawer(false));
-$('btn-logout').addEventListener('click', ()=>{
+
+// ---- 退出 ----
+async function doLogout(){
+  toggleDrawer(false);
+  try{ await api('/api/auth/logout', { method:'POST' }); }catch(e){}
   localStorage.removeItem('token');
   localStorage.removeItem('user');
-  $('login-overlay').style.display = 'flex';
+  showLogin();
+}
+$('btn-logout').addEventListener('click', doLogout);
+
+// ---- 修改密码 ----
+$('btn-change-pw').addEventListener('click', async ()=>{
+  const old = $('a-old').value;
+  const n1 = $('a-new').value;
+  const n2 = $('a-new2').value;
+  if(!old){ toast('请输入原密码'); return; }
+  if(!n1 || n1.length < 6){ toast('新密码至少 6 位'); return; }
+  if(n1 !== n2){ toast('两次新密码不一致'); return; }
+  try{
+    await api('/api/auth/password', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ old_password: old, new_password: n1 }) });
+    $('a-old').value=''; $('a-new').value=''; $('a-new2').value='';
+    toast('密码已修改', true);
+  }catch(e){ toast(e.message); }
 });
-$('btn-delete').addEventListener('click', ()=>{
-  // 账号删除将在阶段 2 接入，此处先演示二次确认
-  if(!confirm('确定删除账号？此操作将永久移除你的全部数据，且不可恢复。')) return;
+
+// ---- 删除账号（需二次确认；管理员无此入口）----
+$('btn-delete').addEventListener('click', async ()=>{
+  const u = currentUser();
+  if(u && u.is_admin) return;
+  if(!confirm('确定删除你的账号？此操作将永久删除该账号及其全部记账数据，且不可恢复。')) return;
   if(!confirm('二次确认：删除后无法找回，确定永久删除？')) return;
-  alert('删除账号功能将在阶段 2 接入');
+  try{
+    await api('/api/auth/delete', { method:'DELETE' });
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    showLogin();
+    toast('账号已删除', true);
+  }catch(e){ toast(e.message); }
 });
-$('btn-change-pw').addEventListener('click', ()=>{
-  alert('修改密码功能将在阶段 2 接入');
+
+// ---- 会话管理 ----
+function deviceLabel(ua){
+  ua = ua || '';
+  const name =
+    /MicroMessenger/i.test(ua) ? '微信内置浏览器' :
+    /iPhone|iPad|iPod/i.test(ua) ? 'iOS 设备' :
+    /Android/i.test(ua) ? 'Android 设备' :
+    /Edg/i.test(ua) ? 'Edge' :
+    /Firefox/i.test(ua) ? 'Firefox' :
+    /Chrome/i.test(ua) ? 'Chrome' :
+    /Safari/i.test(ua) ? 'Safari' : '';
+  return name || (ua.slice(0, 40) || '未知设备');
+}
+function fmtTime(s){
+  return s ? s.slice(0, 16).replace('T', ' ') : '';
+}
+async function loadSessions(){
+  const box = $('session-list');
+  if(!box) return;
+  let list = [];
+  try{
+    const j = await api('/api/sessions');
+    list = j.data || [];
+  }catch(e){
+    box.innerHTML = '<span class="note">读取失败</span>';
+    return;
+  }
+  if(!list.length){ box.innerHTML = '<span class="note">当前无有效登录会话</span>'; return; }
+  box.innerHTML = '';
+  list.forEach(s=>{
+    const dev = (s.user_agent ? deviceLabel(s.user_agent) : '未知设备') + ' · ' + s.token.slice(0, 8) + '…';
+    const row = document.createElement('div');
+    row.className = 'user-row';
+    row.innerHTML = `
+      <div class="u-name">${dev}${s.is_current ? '<span class="tag">当前</span>' : ''}</div>
+      <div class="u-meta">登录 ${fmtTime(s.created_at)} · 过期 ${fmtTime(s.expires_at)}</div>
+      <div class="u-actions">
+        ${s.is_current
+          ? '<button class="mini-btn" disabled style="opacity:.4">当前使用</button>'
+          : `<button class="mini-btn danger" onclick="revokeSession('${s.token}')">强制下线</button>`}
+      </div>`;
+    box.appendChild(row);
+  });
+}
+async function revokeSession(token){
+  if(!confirm('确定强制下线该设备？')) return;
+  try{
+    await api('/api/sessions/revoke', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ token }) });
+    toast('已强制下线', true);
+    loadSessions();
+  }catch(e){ toast(e.message); }
+}
+
+// ---- 管理员：用户列表 ----
+async function renderUsers(){
+  const box = $('admin-users');
+  if(!box) return;
+  let users = [];
+  try{
+    const j = await api('/api/admin/users');
+    users = j.data || [];
+  }catch(e){ box.innerHTML = '<span class="note">'+e.message+'</span>'; return; }
+  if(!users.length){ box.innerHTML = '<span class="note">暂无用户</span>'; return; }
+  box.innerHTML = '';
+  users.forEach(u=>{
+    const created = (u.created_at || '').slice(0, 10);
+    const row = document.createElement('div');
+    row.className = 'user-row';
+    row.innerHTML = `
+      <div class="u-name">${u.username}${u.is_admin ? '<span class="tag">管理员</span>' : ''}${u.is_active ? '' : '<span class="tag on">已禁用</span>'}</div>
+      <div class="u-meta">注册 ${created} · ${u.record_count} 条记录</div>
+      ${u.is_admin ? '' : `
+        <div class="u-actions">
+          <button class="mini-btn" onclick="toggleResetForm(${u.id})">重置密码</button>
+          <button class="mini-btn ${u.is_active ? 'warn' : ''}" onclick="toggleUser(${u.id}, ${u.is_active ? 'true' : 'false'})">${u.is_active ? '禁用' : '启用'}</button>
+          <button class="mini-btn danger" onclick="delUser(${u.id})">删除</button>
+        </div>
+        <div class="reset-form" id="reset-${u.id}" style="display:none">
+          <input type="password" id="rp-${u.id}" placeholder="新密码（至少 6 位）">
+          <button class="mini-btn" onclick="doReset(${u.id})">确认重置</button>
+        </div>`}
+    `;
+    box.appendChild(row);
+  });
+}
+function toggleResetForm(id){
+  const f = $('reset-'+id);
+  const show = f.style.display !== 'flex';
+  f.style.display = show ? 'flex' : 'none';
+  if(!show) $('rp-'+id).value = '';
+}
+async function doReset(id){
+  const pw = $('rp-'+id).value;
+  if(!pw || pw.length < 6){ toast('新密码至少 6 位'); return; }
+  try{
+    await api('/api/admin/users/reset_password', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ user_id: id, new_password: pw }) });
+    $('reset-'+id).style.display = 'none';
+    toast('已重置，该用户需重新登录', true);
+  }catch(e){ toast(e.message); }
+}
+async function toggleUser(id, disable){
+  if(!confirm((disable ? '禁用' : '启用') + '该用户？')) return;
+  try{
+    await api('/api/admin/users/' + (disable ? 'disable' : 'enable'), { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ user_id: id }) });
+    toast(disable ? '已禁用' : '已启用', true);
+    renderUsers();
+  }catch(e){ toast(e.message); }
+}
+async function delUser(id){
+  if(!confirm('删除该用户将清空其全部记账数据，且不可恢复。确定？')) return;
+  try{
+    await api('/api/admin/users?user_id=' + id, { method:'DELETE' });
+    toast('已删除', true);
+    renderUsers();
+  }catch(e){ toast(e.message); }
+}
+$('btn-create-user').addEventListener('click', async ()=>{
+  const name = $('au-name').value.trim();
+  const pass = $('au-pass').value;
+  if(!name || name.length < 3 || name.length > 20){ toast('用户名需 3-20 个字符'); return; }
+  if(!pass || pass.length < 6){ toast('初始密码至少 6 位'); return; }
+  try{
+    await api('/api/admin/users/create', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username: name, password: pass }) });
+    $('au-name').value=''; $('au-pass').value='';
+    toast('已创建账户', true);
+    renderUsers();
+  }catch(e){ toast(e.message); }
 });
+
+// ---- 初始化 ----
+(async function initAuth(){
+  const u = currentUser();
+  if(!localStorage.getItem('token') || !u){ showLogin(); return; }
+  try{
+    const me = await api('/api/auth/me');
+    localStorage.setItem('user', JSON.stringify(me.data));
+    await startApp();
+  }catch(e){ showLogin(); }
+})();
 </script>
 </body>
 </html>
