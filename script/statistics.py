@@ -52,7 +52,10 @@ def _float(v):
 def aggregate(uid, params):
     """返回 (data, err)。data 含 total/scene_breakdown/scenario_breakdown/
     channel_breakdown/spending_dist/records/path。"""
-    month = (params.get("month") or "").strip()
+    _m = params.get("month")
+    if isinstance(_m, (list, tuple)):
+        _m = _m[-1] if _m else ""
+    month = (str(_m) if _m is not None else "").strip()
     if not month:
         return None, "缺少 month 参数"
     try:
@@ -103,13 +106,41 @@ def aggregate(uid, params):
             category=cat_name.get(r["category_id"]), motive=r["mname"], channel=r["chname"],
             period=_period(hour), **kwargs))
 
-    # ---- 筛选条件 ----
+    # ---- 筛选条件（支持多值复选；值为 list 或单值）----
+    def _value_set(v):
+        if v is None:
+            return None
+        vals = v if isinstance(v, (list, tuple)) else [v]
+        vals = [x for x in vals if x not in (None, "")]
+        return set(vals) if vals else None
+
+    def _int_set(v):
+        s = _value_set(v)
+        if not s:
+            return None
+        out = set()
+        for x in s:
+            try:
+                out.add(int(x))
+            except (TypeError, ValueError):
+                pass
+        return out or None
+
     cat_id = _int(params.get("category_id"))
-    motive = _int(params.get("motive"))
-    channel = (params.get("channel") or "").strip()
-    iw = (params.get("is_weekend") or "").strip().lower()
-    period_f = (params.get("period") or "").strip()
-    mp_f = (params.get("month_part") or "").strip()
+    if isinstance(params.get("category_id"), (list, tuple)):
+        cat_id = _int(params.get("category_id")[-1])
+    motive_set = _int_set(params.get("motive"))
+    channel_set = _value_set(params.get("channel"))
+    iw_set = _value_set(params.get("is_weekend"))
+    period_set = _value_set(params.get("period"))
+    mp_set = _value_set(params.get("month_part"))
+    if iw_set is not None:
+        iw_set = {str(x).lower() for x in iw_set}
+        iw_true = "true" in iw_set
+        iw_false = "false" in iw_set
+        iw_set = None
+    else:
+        iw_true = iw_false = False
 
     # 目标筛选分类的子树 id 集合（含自身）
     sub_ids = None
@@ -126,16 +157,17 @@ def aggregate(uid, params):
     def _match(rc):
         if sub_ids is not None and rc["category_id"] not in sub_ids:
             return False
-        if motive is not None and rc["motive_id"] != motive:
+        if motive_set is not None and rc["motive_id"] not in motive_set:
             return False
-        if channel and rc["channel"] != channel:
+        if channel_set is not None and rc["channel"] not in channel_set:
             return False
-        if iw in ("true", "false") and rc["is_weekend"] is not None \
-                and str(rc["is_weekend"]).lower() != iw:
+        if (iw_true or iw_false) and rc["is_weekend"] is not None:
+            is_w = "true" if rc["is_weekend"] else "false"
+            if not ((iw_true and is_w == "true") or (iw_false and is_w == "false")):
+                return False
+        if period_set is not None and rc["period"] not in period_set:
             return False
-        if period_f and rc["period"] != period_f:
-            return False
-        if mp_f and rc["month_part"] != mp_f:
+        if mp_set is not None and rc["month_part"] not in mp_set:
             return False
         return True
 

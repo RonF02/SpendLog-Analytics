@@ -147,10 +147,12 @@ class Handler(BaseHTTPRequestHandler):
                 q = self.path.split("?", 1)
                 qs = {}
                 if len(q) > 1:
+                    from urllib.parse import unquote_plus
                     for part in q[1].split("&"):
                         if "=" in part:
                             k, v = part.split("=", 1)
-                            qs[k] = v
+                            v = unquote_plus(v)
+                            qs.setdefault(k, []).append(v)  # 支持多值复选
                 data, err = aggregate(user["id"], qs)
                 if err:
                     json_response(self, {"code": 1, "message": err}, 400)

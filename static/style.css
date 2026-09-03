@@ -34,10 +34,21 @@
 .bud-row.over{ background:var(--red-bg); border-radius:6px; }
 .bud-name{ width:88px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:auto; }
 .bud-rem.bad{ color:var(--red); font-weight:600; }
-.filters{ display:flex; flex-direction:column; gap:8px; margin:8px 0; border:1px solid var(--line); border-radius:8px; padding:8px; }
+/* 筛选：整个模块为可折叠下拉面板，选中项用芯片颜色提示（无文字） */
+.filters-toggle{ display:flex; align-items:center; gap:8px; padding:10px 12px; margin:6px 0;
+  border:1px solid var(--line); border-radius:8px; background:var(--card); cursor:pointer;
+  user-select:none; -webkit-user-select:none; }
+.filters-toggle .ft-dot{ width:8px; height:8px; border-radius:50%; background:var(--accent);
+  opacity:0; transition:opacity .2s; flex:none; }
+.filters-toggle.on,.filters-toggle.on .ft-label{ color:var(--accent); }
+.filters-toggle .ft-label{ font-size:14px; font-weight:600; }
+.filters-toggle .caret{ margin-left:auto; color:var(--muted); font-size:13px; transition:transform .2s; }
+.filters{ display:none; flex-direction:column; gap:8px; margin:6px 0; border:1px solid var(--line);
+  border-radius:8px; padding:8px; }
+.filters.open{ display:flex; }
 .fg{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 .fg>span{ font-size:12px; color:var(--muted); width:52px; flex:none; }
-.fg .chips{ gap:6px; }
+.fg .chips{ gap:6px; margin-top:0; }
 .crumb{ font-size:13px; color:var(--accent); margin:6px 0; }
 .crumb a{ color:var(--accent); text-decoration:none; }
 .clicky{ color:var(--accent); cursor:pointer; }
@@ -98,7 +109,7 @@ header{ position:sticky; top:0; z-index:20; background:var(--card); border-botto
 .chip{ padding:8px 15px; border-radius:18px; border:1px solid var(--line); background:#f7f8fb;
   font-size:13px; cursor:pointer; color:#555; position:relative; user-select:none;
   -webkit-user-select:none; -webkit-touch-callout:none; }
-.chip.active{ background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+.chip.active, .chip.on{ background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
 .chip.drag-marker{ background:#eef2ff; border:1px dashed var(--accent); color:transparent; opacity:.6; }
 .chip.add-chip{ border-style:dashed; border-color:#ccc; background:transparent; color:#999; }
 .chip.add-chip.active{ border-color:var(--accent); color:var(--accent); }

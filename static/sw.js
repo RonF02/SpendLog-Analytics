@@ -3,7 +3,7 @@
    - 页面/导航：network-first（保证拿到最新），失败回退缓存
    - /api/*：直接走网络，绝不缓存（保持数据实时）
    版本号递增即触发缓存更新。 */
-const CACHE = 'spendlog-v1';
+const CACHE = 'spendlog-v2';
 const CORE = [
   '/',
   '/index.html',

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -72,9 +72,8 @@
   <!-- 报表页（仅报表 card） -->
   <div class="card page" id="page-stat">
     <div class="page-title">报表</div>
-    <div class="row" style="margin-top:4px">
+    <div style="margin-top:4px">
       <input type="month" id="stat-month">
-      <button class="btn small" onclick="loadStats()">刷新</button>
     </div>
     <div id="stat-body"></div>
   </div>
@@ -205,22 +204,40 @@ document.querySelectorAll('.tabbar > div').forEach(t=>{
 // ---- 报表页（阶段5 5.9 + 阶段7 下钻与筛选）----
 const _now = new Date();
 $('stat-month').value = _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2, '0');
-$('stat-month').addEventListener('change', ()=>{ ST.categoryId=''; loadStats(); });
+$('stat-month').addEventListener('change', ()=>{ ST.categoryId=''; updateFilterToggle(); loadStats(); });
 
-// 筛选状态（categoryId=下钻根；其余均用查询字符串形式，'' 表示不限）
-let ST = { categoryId:'', motive:'', channel:'', is_weekend:'', period:'', month_part:'' };
+// 筛选状态（categoryId=下钻根；其余为数组，支持复选，[] 表示不限）
+let ST = { categoryId:'', motive:[], channel:[], is_weekend:[], period:[], month_part:[] };
+let _filtersOpen = false;
 let _chansC = null, _motsC = null;
 
+const FILTER_KEYS = ['motive','channel','is_weekend','period','month_part'];
 function statsQuery(){
   const qs = new URLSearchParams();
   qs.set('month', $('stat-month').value);
   if(ST.categoryId) qs.set('category_id', ST.categoryId);
-  if(ST.motive) qs.set('motive', ST.motive);
-  if(ST.channel) qs.set('channel', ST.channel);
-  if(ST.is_weekend) qs.set('is_weekend', ST.is_weekend);
-  if(ST.period) qs.set('period', ST.period);
-  if(ST.month_part) qs.set('month_part', ST.month_part);
+  FILTER_KEYS.forEach(k=>{
+    const arr = Array.isArray(ST[k]) ? ST[k] : [];
+    arr.forEach(v=>{ if(v!=='' && v!=null) qs.append(k, v); });
+  });
   return qs.toString();
+}
+function filterCount(){
+  let n = ST.categoryId ? 1 : 0;
+  FILTER_KEYS.forEach(k=>{ n += (Array.isArray(ST[k]) ? ST[k].length : 0); });
+  return n;
+}
+function updateFilterToggle(){
+  const t = $('filters-toggle'), d = $('filter-dot');
+  const on = filterCount() > 0;
+  if(t) t.classList.toggle('on', on);
+  if(d) d.style.opacity = on ? '1' : '0';
+}
+function toggleFilters(){
+  _filtersOpen = !_filtersOpen;
+  const p = $('filters-panel'), c = $('filter-caret');
+  if(p) p.classList.toggle('open', _filtersOpen);
+  if(c) c.textContent = _filtersOpen ? '▴' : '▾';
 }
 async function getFilterData(){
   try{ if(!_chansC) _chansC = ((await api('/api/channels')).data || []); }catch(e){ _chansC = _chansC || []; }
@@ -234,7 +251,11 @@ function fm(x){
 async function loadStats(){
   const month = $('stat-month').value;
   if(!month) return;
-  $('stat-body').innerHTML = '<div class="note"><span class="spinner"></span>加载中…</div>';
+  const body = $('stat-body');
+  // 首次加载才显示 spinner；已有内容则在拿到新数据后原地替换，避免白屏闪烁
+  if(!body.dataset.loaded){
+    body.innerHTML = '<div class="note"><span class="spinner"></span>加载中…</div>';
+  }
   let chans=[], mots=[];
   try{
     const [j] = await Promise.all([
@@ -242,8 +263,11 @@ async function loadStats(){
       getFilterData().then(v=>{ chans=v[0]; mots=v[1]; })
     ]);
     renderStats(j.data || {}, chans, mots);
+    body.dataset.loaded = '1';
   }catch(e){
-    $('stat-body').innerHTML = '<div class="note">'+(e.message||'加载失败')+'</div>';
+    if(!body.dataset.loaded){
+      body.innerHTML = '<div class="note">'+(e.message||'加载失败')+'</div>';
+    }
   }
   loadBalance(); // 余额单独加载，失败不影响报表主体
 }
@@ -264,54 +288,43 @@ async function loadBalance(){
 }
 
 // ---- 下钻 & 筛选 ----
-function drillTo(cid){ ST.categoryId = cid ? String(cid) : ''; loadStats(); }
+function drillTo(cid){ ST.categoryId = cid ? String(cid) : ''; updateFilterToggle(); loadStats(); }
 function statFilter(el){
   const k = el.dataset.x, v = el.dataset.y;
-  ST[k] = (String(ST[k]||'') === v) ? '' : v; // 再次点击取消
+  const cur = Array.isArray(ST[k]) ? ST[k] : [];
+  const set = new Set(cur);
+  set.has(String(v)) ? set.delete(String(v)) : set.add(String(v)); // 复选/取消
+  ST[k] = [...set];
+  updateFilterToggle();
   loadStats();
 }
-function channelFilter(v){ ST.channel = v; loadStats(); }
-function scenFilter(id){ ST.motive = String(id); loadStats(); }
+function scenFilter(id){ ST.motive = [String(id)]; updateFilterToggle(); loadStats(); }
 function clearStatsFilters(){
-  ST = { categoryId:'', motive:'', channel:'', is_weekend:'', period:'', month_part:'' };
-  loadStats();
+  ST = { categoryId:'', motive:[], channel:[], is_weekend:[], period:[], month_part:[] };
+  updateFilterToggle(); loadStats();
 }
 function scol(k, v, label){
-  const on = (String(ST[k]||'') === String(v));
+  const arr = Array.isArray(ST[k]) ? ST[k] : [];
+  const on = arr.indexOf(String(v)) >= 0;   // 选中即变色
   return '<span class="chip'+(on?' on':'')+'" data-x="'+k+'" data-y="'+v+'" onclick="statFilter(this)">'+label+'</span>';
 }
-function activeFilterSummary(mots){
-  const parts = [];
-  if(ST.categoryId){ /* 分类已在面包屑中显示 */ }
-  if(ST.motive){ const m=(mots||[]).find(x=>String(x.id)===String(ST.motive)); if(m) parts.push('场景 · '+m.name); }
-  if(ST.channel) parts.push('渠道 · '+ST.channel);
-  if(ST.is_weekend==='true') parts.push('周末'); else if(ST.is_weekend==='false') parts.push('工作日');
-  if(ST.period) parts.push('时段 · '+ST.period);
-  if(ST.month_part) parts.push('月段 · '+ST.month_part);
-  return parts;
-}
 function filtersHtml(chans, mots){
-  const act = activeFilterSummary(mots);
-  return '<div class="filters">'
-    + '<div class="sel-line"><b>当前筛选：</b>' + (act.length ? act.join('、') : '<span class="muted">本月 · 全部场景 · 全部渠道 · 不限时间</span>')
-      + (act.length ? '　<button class="mini-btn" onclick="clearStatsFilters()">清除筛选</button>' : '') + '</div>'
-    + '<div class="fg-row">'
-    + '<div class="fg"><span>渠道</span><select id="f-filter-channel" onchange="channelFilter(this.value)">'
-      + '<option value=""' + (ST.channel===''?' selected':'') + '>全部渠道</option>'
-      + chans.map(c=>'<option value="'+c.name+'"'+(ST.channel===c.name?' selected':'')+'>'+c.name+'</option>').join('')
-    + '</select></div>'
+  return '<div class="filters-toggle" id="filters-toggle" onclick="toggleFilters()">'
+    + '<span class="ft-dot" id="filter-dot"></span>'
+    + '<span class="ft-label">筛选</span>'
+    + '<span class="caret" id="filter-caret">'+(_filtersOpen?'▴':'▾')+'</span></div>'
+    + '<div class="filters'+(_filtersOpen?' open':'')+'" id="filters-panel"><div class="fg-row">'
+    + '<div class="fg"><span>渠道</span><div class="chips">'
+      + chans.map(c=>scol('channel', c.name, c.name)).join('') + '</div></div>'
     + '<div class="fg"><span>消费场景</span><div class="chips">'
-      + mots.map(m=>scol('motive', m.id, m.name)).join('')
-    + '</div></div>'
+      + mots.map(m=>scol('motive', m.id, m.name)).join('') + '</div></div>'
     + '<div class="fg"><span>时间</span><div class="chips">'
-      + scol('is_weekend','true','周末') + scol('is_weekend','false','工作日')
-    + '</div></div>'
+      + scol('is_weekend','true','周末') + scol('is_weekend','false','工作日') + '</div></div>'
     + '<div class="fg"><span>时段</span><div class="chips">'
-      + ['凌晨','上午','下午','晚上'].map(p=>scol('period',p,p)).join('')
-    + '</div></div>'
+      + ['凌晨','上午','下午','晚上'].map(p=>scol('period',p,p)).join('') + '</div></div>'
     + '<div class="fg"><span>月段</span><div class="chips">'
-      + ['月初','月中','月末'].map(p=>scol('month_part',p,p)).join('')
-    + '</div></div>'
+      + ['月初','月中','月末'].map(p=>scol('month_part',p,p)).join('') + '</div></div>'
+    + '<div class="fg"><button class="mini-btn" onclick="clearStatsFilters()">清除筛选</button></div>'
     + '</div></div>';
 }
 function crumbHtml(path){
@@ -368,6 +381,7 @@ function renderStats(d, chans, mots){
   // 账户余额（阶段6.6，由 loadBalance 填充，失败不影响报表）
   html += '<div class="mod-title">账户余额</div><div id="balance-list"><div class="note">加载中…</div></div>';
   $('stat-body').innerHTML = html;
+  updateFilterToggle(); // 重渲染后恢复筛选激活色
   fillBudgetCats();
 }
 
