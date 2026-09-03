@@ -43,14 +43,12 @@
     </div>
     <div class="label" style="margin-top:12px">场景（一级分类）</div>
     <div class="chips" id="chips-main"></div>
-    <div class="addbar" onclick="toggleMainAdd()">＋ 新增场景标签</div>
     <div class="addform" id="addm" style="display:none">
       <input id="m-name" placeholder="名称，如：购物">
       <button class="mini-btn" onclick="doAddMain()">添加一级</button>
     </div>
     <div class="label" style="margin-top:12px">子项（二级分类）</div>
     <div class="chips" id="chips-sub"></div>
-    <div class="addbar" onclick="toggleSubAdd()">＋ 新增子项标签</div>
     <div class="addform" id="adds" style="display:none">
       <input id="s-name" placeholder="名称，如：零食">
       <button class="mini-btn" onclick="doAddSub()">添加二级</button>
@@ -543,6 +541,7 @@ function renderMainChips(){
     bindChipDelete(chip);
     box.appendChild(chip);
   });
+  addAddChip(box, 'addm');
   if(S.categories.length && !mainOf(curMain)) selectMain(S.categories[0].id);
   else selectMain(curMain);
 }
@@ -571,12 +570,24 @@ function renderSubChips(id){
     bindChipDelete(chip);
     box.appendChild(chip);
   });
+  addAddChip(box, 'adds');
   setTimeout(()=>{ if(box.firstChild) box.firstChild.classList.add('active'); }, 0);
 }
 
+// 固定的「+新增」标签：虚线外框，不可拖动，固定最后一位
+function addAddChip(box, formId){
+  const add = document.createElement('div');
+  add.className = 'chip add-chip';
+  add.textContent = '+新增';
+  add.onclick = ()=> toggleSide(formId);
+  box.appendChild(add);
+}
+function toggleSide(id){
+  const f = $(id);
+  f.style.display = f.style.display === 'none' ? 'flex' : 'none';
+}
+
 // ---- 记一笔页内联新增分类 ----
-function toggleMainAdd(){ $('addm').style.display = $('addm').style.display === 'none' ? 'flex' : 'none'; }
-function toggleSubAdd(){ $('adds').style.display = $('adds').style.display === 'none' ? 'flex' : 'none'; }
 async function doAddMain(){
   const name = $('m-name').value.trim();
   if(!name){ toast('请输入名称'); return; }
@@ -647,7 +658,7 @@ function enableChipDrag(box, isMain){
   box.addEventListener('pointerdown', e=>{
     if(e.button !== undefined && e.button !== 0) return;
     const chip = e.target.closest ? e.target.closest('.chip') : null;
-    if(!chip || chip.classList.contains('drag-marker')) return;
+    if(!chip || chip.classList.contains('drag-marker') || chip.classList.contains('add-chip')) return;
     if(e.target.classList.contains('del-mark')) return;
     closeDelMark();
     drag = { box, chip, isMain, id: e.pointerId, started: false, sx: e.clientX, sy: e.clientY };
@@ -702,7 +713,7 @@ function finishDrag(e){
   chip.style.cssText = '';
   d.box.insertBefore(chip, marker);
   marker.remove();
-  const ids = Array.from(d.box.querySelectorAll('.chip')).map(c=> Number(c.dataset.id));
+  const ids = Array.from(d.box.querySelectorAll('.chip:not(.add-chip)')).map(c=> Number(c.dataset.id));
   persistOrder(d.isMain, ids);
 }
 async function persistOrder(isMain, ids){
