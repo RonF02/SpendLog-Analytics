@@ -23,6 +23,8 @@ from auth import (ensure_admin, register, login, logout, check_auth,
 from categories import get_categories, add_category, delete_category, reorder_categories
 from records import list_motives, channels_info, add_channel, add_record
 from statistics import aggregate
+from budgets import list_budgets, set_budget
+from balance import list_balance, calibrate
 from db import init_accounts_db
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录（本文件位于 script/）
@@ -149,6 +151,16 @@ class Handler(BaseHTTPRequestHandler):
                     json_response(self, {"code": 1, "message": err}, 400)
                 else:
                     json_response(self, {"code": 0, "message": "ok", "data": data})
+            elif path == "/api/budget":
+                month = self._query_param("month")
+                if not month:
+                    json_response(self, {"code": 1, "message": "缺少 month 参数"}, 400)
+                else:
+                    json_response(self, {"code": 0, "message": "ok",
+                                         "data": list_budgets(user["id"], month)})
+            elif path == "/api/balance":
+                json_response(self, {"code": 0, "message": "ok",
+                                     "data": list_balance(user["id"])})
             else:
                 json_response(self, {"code": 404, "message": "Not Found"}, 404)
         else:
@@ -203,6 +215,29 @@ class Handler(BaseHTTPRequestHandler):
                 json_response(self, {"code": 1, "message": err}, 400)
             else:
                 json_response(self, {"code": 0, "message": "ok", "data": data})
+            return
+        if path == "/api/budget":
+            user = check_auth(self._bearer_token())
+            if not user:
+                json_response(self, {"code": 401, "message": "未登录或登录已过期"}, 401)
+                return
+            data, err = set_budget(user["id"], payload.get("category_id"),
+                                   payload.get("month"), payload.get("amount"))
+            if err:
+                json_response(self, {"code": 1, "message": err}, 400)
+            else:
+                json_response(self, {"code": 0, "message": "ok", "data": data}, 201)
+            return
+        if path == "/api/balance/calibrate":
+            user = check_auth(self._bearer_token())
+            if not user:
+                json_response(self, {"code": 401, "message": "未登录或登录已过期"}, 401)
+                return
+            data, err = calibrate(user["id"], payload.get("channel_id"), payload.get("balance"))
+            if err:
+                json_response(self, {"code": 1, "message": err}, 400)
+            else:
+                json_response(self, {"code": 0, "message": "ok", "data": data}, 201)
             return
         if path == "/api/categories/reorder":
             user = check_auth(self._bearer_token())

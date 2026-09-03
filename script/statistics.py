@@ -68,6 +68,10 @@ def aggregate(uid, params):
             cat_parent[c["id"]] = c["parent_id"]
             cat_name[c["id"]] = c["name"]
             cat_level[c["id"]] = c["level"]
+        # 该月一级场景预算（阶段6.3）
+        budgets = {b["category_id"]: b["amount"]
+                   for b in conn.execute(
+                       "SELECT category_id, amount FROM budgets WHERE month=?", (month,))}
         rows = conn.execute(
             """SELECT r.uuid, r.date, r.time, r.amount, r.note,
                       r.category_id, r.motive_id, r.channel_id,
@@ -232,6 +236,24 @@ def aggregate(uid, params):
         path.insert(0, {"category_id": node, "name": cat_name.get(node)})
         node = cat_parent.get(node)
 
+    # ---- 预算执行（阶段6.3）：一级场景 预算 vs 实际 vs 结余，超支高亮 ----
+    # 按当前筛选作用的支出，聚合到各自一级场景
+    root_expend = {}
+    for x in exp:
+        root = cat_parent.get(x["category_id"])
+        while root is not None and cat_parent.get(root) is not None:
+            root = cat_parent.get(root)
+        root = root if root is not None else x["category_id"]
+        root_expend[root] = root_expend.get(root, 0.0) + (-x["amount"])
+    budget_rows = []
+    for cid, amount in budgets.items():
+        actual = round(root_expend.get(cid, 0.0), 2)
+        remaining = round(amount - actual, 2)
+        budget_rows.append({"category_id": cid, "name": cat_name.get(cid),
+                            "budget_amount": amount, "actual": actual,
+                            "remaining": remaining, "overspent": remaining < 0})
+    budget_rows.sort(key=lambda z: (not z["overspent"], z["budget_amount"]))
+
     data = {
         "total": {"income": round(income, 2), "expense": round(expense, 2),
                   "balance": round(balance, 2)},
@@ -241,5 +263,6 @@ def aggregate(uid, params):
         "spending_dist": spending_dist,
         "records": records,
         "path": path,
+        "budget": budget_rows,
     }
     return data, None

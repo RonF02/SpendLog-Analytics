@@ -30,6 +30,10 @@
 .tbl th{ color:var(--muted); font-weight:500; }
 .tbl td{ word-break:break-all; }
 .note{ color:var(--muted); font-size:13px; padding:4px 0; }
+.bud-row{ display:flex; align-items:center; gap:8px; padding:6px 2px; border-bottom:1px dashed var(--line); font-size:13px; flex-wrap:wrap; }
+.bud-row.over{ background:var(--red-bg); border-radius:6px; }
+.bud-name{ width:88px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:auto; }
+.bud-rem.bad{ color:var(--red); font-weight:600; }
 *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
 html,body{ margin:0; padding:0; background:var(--bg); color:var(--text);
   font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif; }

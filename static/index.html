@@ -194,8 +194,11 @@ async function loadStats(){
   if(!month) return;
   $('stat-body').innerHTML = '<div class="note">加载中…</div>';
   try{
-    const j = await api('/api/report/aggregate?month='+month);
-    renderStats(j.data || {});
+    const [j, bj] = await Promise.all([
+      api('/api/report/aggregate?month='+month),
+      api('/api/balance')
+    ]);
+    renderStats(j.data || {}, bj.data || []);
   }catch(e){
     $('stat-body').innerHTML = '<div class="note">'+(e.message||'加载失败')+'</div>';
   }
@@ -206,7 +209,7 @@ function barItem(total, name, max){
     '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%"></div></div>'+
     '<div class="bar-val">'+fm(total)+'</div></div>';
 }
-function renderStats(d){
+function renderStats(d, balances){
   const t = d.total || {income:0, expense:0, balance:0};
   const scene = d.scene_breakdown || [];
   const scen = d.scenario_breakdown || [];
@@ -232,7 +235,61 @@ function renderStats(d){
     + '<tr><th>日期</th><th>金额</th><th>分类</th><th>消费场景</th><th>渠道</th><th>备注</th></tr>'
     + (recs.length ? recs.map(x=>'<tr><td>'+(x.date||'')+' '+(x.time||'')+'</td><td>'+fm(x.amount)+'</td><td>'+(x.category||'-')+'</td><td>'+(x.motive||'-')+'</td><td>'+(x.channel||'-')+'</td><td>'+(x.note||'')+'</td></tr>').join('') : '<tr><td colspan="6" class="note">无记录</td></tr>')
     + '</table>';
+  // 预算执行（阶段6.7，超支红）
+  const bud = d.budget || [];
+  let budHtml = '<div class="mod-title">预算执行 <button class="mini-btn" onclick="toggleBudgetSet()">设预算</button></div>'
+    + '<div id="budget-set" style="display:none" class="row">'
+    + '<select id="b-cat"></select><input id="b-amount" type="number" placeholder="金额" style="width:90px">'
+    + '<button class="btn small" onclick="setBudget()">保存</button></div>'
+    + (bud.length ? '<div class="tbl">'+bud.map(x=>
+        '<div class="bud-row '+(x.overspent?'over':'')+'"><span class="bud-name">'+x.name+'</span>'
+        +'<span>预算 '+fm(x.budget_amount)+'</span><span>实花 '+fm(x.actual)+'</span>'
+        +'<span class="bud-rem'+(x.overspent?' bad':'')+'">'+(x.overspent?'超支':'结余')+' '+fm(x.remaining)+'</span></div>'
+      ).join('')+'</div>' : '<div class="note">本月未设预算，点击「设预算」添加</div>');
+  html += budHtml;
+  // 账户余额（阶段6.6）
+  html += '<div class="mod-title">账户余额</div><div class="tbl">'
+    + (balances.length ? balances.map(x=>'<div class="bud-row"><span class="bud-name">'+x.name+'</span>'
+        +'<span>'+fm(x.balance)+'</span>'
+        +'<button class="mini-btn" onclick="calibrateBal('+x.id+',\''+x.name+'\','+x.balance+')">校准</button></div>').join('')
+       : '<div class="note">暂无渠道</div>')
+    + '</div>';
   $('stat-body').innerHTML = html;
+  fillBudgetCats();
+}
+
+// ---- 预算 & 余额（阶段6）----
+let _rootsCache = null;
+async function fillBudgetCats(){
+  try{
+    if(!_rootsCache){ _rootsCache = (await api('/api/categories')).data || []; }
+    $('b-cat').innerHTML = _rootsCache.map(r=>'<option value="'+r.id+'">'+r.name+'</option>').join('');
+  }catch(e){}
+}
+function toggleBudgetSet(){
+  const el = $('budget-set');
+  el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+async function setBudget(){
+  const id = $('b-cat').value, amt = $('b-amount').value, month = $('stat-month').value;
+  if(!id || !amt) return toast('请选择场景并填写金额');
+  try{
+    await api('/api/budget', {method:'POST',
+      body: JSON.stringify({category_id:+id, month:month, amount:+amt})});
+    toast('预算已保存', true);
+    if($('b-amount')) $('b-amount').value='';
+    loadStats();
+  }catch(e){ toast(e.message); }
+}
+async function calibrateBal(cid, name, cur){
+  const v = prompt('校准「'+name+'」到多少？', cur);
+  if(v === null || v === '') return;
+  try{
+    await api('/api/balance/calibrate', {method:'POST',
+      body: JSON.stringify({channel_id:cid, balance:parseFloat(v)})});
+    toast('已校准', true);
+    loadStats();
+  }catch(e){ toast(e.message); }
 }
 
 // ---- 登录 / 注册 ----
