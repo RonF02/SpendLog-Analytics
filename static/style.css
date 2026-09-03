@@ -50,6 +50,25 @@ header{ position:sticky; top:0; z-index:20; background:var(--card); border-botto
 .hamburger{ border:none; background:none; font-size:22px; cursor:pointer; color:var(--text); }
 .card{ background:var(--card); border-radius:12px; margin:12px; padding:16px; }
 .page-title{ font-weight:600; margin-bottom:6px; }
+.label{ font-size:12px; color:#999; margin-bottom:6px; }
+.amount-input{ font-size:26px; font-weight:700; text-align:center; }
+.row{ display:flex; gap:10px; }
+.row>div{ flex:1; }
+.addbar{ color:var(--accent); font-size:13px; margin-top:8px; cursor:pointer; }
+.addform{ margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.addform input{ flex:1; min-width:90px; padding:9px; }
+.chips{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.chip{ padding:8px 15px; border-radius:18px; border:1px solid var(--line); background:#f7f8fb;
+  font-size:13px; cursor:pointer; color:#555; position:relative; user-select:none;
+  -webkit-user-select:none; -webkit-touch-callout:none; }
+.chip.active{ background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+.chip.drag-marker{ background:#eef2ff; border:1px dashed var(--accent); color:transparent; opacity:.6; }
+.del-mark{ position:absolute; top:-8px; right:-8px; width:22px; height:22px; border-radius:50%;
+  display:none; align-items:center; justify-content:center; font-weight:700; font-size:14px;
+  background:#fff; box-shadow:0 1px 5px rgba(0,0,0,.3); z-index:5; }
+.del-mark.show{ display:flex; }
+.del-mark.red{ color:var(--red); border:2px solid var(--red); }
+.del-mark.gray{ color:#bbb; border:2px solid #ccc; }
 .placeholder{ padding:30px 0; text-align:center; color:var(--muted); font-size:14px; }
 
 /* ---- 底部 Tab ---- */
@@ -88,13 +107,6 @@ header{ position:sticky; top:0; z-index:20; background:var(--card); border-botto
 .pw-form{ display:flex; flex-direction:column; gap:10px; }
 .pw-form .btn{ margin-top:2px; }
 
-/* 记账页：分类选择组件 */
-.field{ margin-bottom:6px; }
-.field label{ display:block; font-size:13px; color:var(--muted); margin:10px 0 6px; }
-.field select{ width:100%; padding:10px; border:1px solid var(--line); border-radius:10px; background:#fff; font-size:14px; }
-.chips{ display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 4px; }
-.chip{ padding:7px 14px; border-radius:16px; border:1px solid var(--line); background:#fff; font-size:13px; cursor:pointer; user-select:none; }
-.chip.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
 .sel-hint{ margin-top:12px; font-size:13px; color:var(--muted); }
 
 /* ---- Toast ---- */
