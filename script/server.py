@@ -21,6 +21,7 @@ from admin import (list_users, change_password, admin_reset_password,
 from auth import (ensure_admin, register, login, logout, check_auth,
                   create_user, list_sessions, revoke_session, delete_account)
 from categories import get_categories, add_category, delete_category, reorder_categories
+from records import list_motives, channels_info, add_channel, add_record
 from db import init_accounts_db
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # 项目根目录（本文件位于 script/）
@@ -123,6 +124,14 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/sessions":
                 json_response(self, {"code": 0, "message": "ok",
                                      "data": list_sessions(user["id"], self._bearer_token())})
+            elif path == "/api/motives":
+                json_response(self, {"code": 0, "message": "ok",
+                                     "data": list_motives(user["id"])})
+            elif path == "/api/channels":
+                info = channels_info(user["id"])
+                json_response(self, {"code": 0, "message": "ok",
+                                     "data": info["channels"],
+                                     "last_used_channel_id": info["last_used_channel_id"]})
             elif path == "/api/categories":
                 json_response(self, {"code": 0, "message": "ok",
                                      "data": get_categories(user["id"])})
@@ -191,6 +200,28 @@ class Handler(BaseHTTPRequestHandler):
                 json_response(self, {"code": 1, "message": err}, 400)
             else:
                 json_response(self, {"code": 0, "message": "ok", "data": data})
+            return
+        if path == "/api/records":
+            user = check_auth(self._bearer_token())
+            if not user:
+                json_response(self, {"code": 401, "message": "未登录或登录已过期"}, 401)
+                return
+            data, err = add_record(user["id"], payload)
+            if err:
+                json_response(self, {"code": 1, "message": err}, 400)
+            else:
+                json_response(self, {"code": 0, "message": "ok", "data": data}, 201)
+            return
+        if path == "/api/channels":
+            user = check_auth(self._bearer_token())
+            if not user:
+                json_response(self, {"code": 401, "message": "未登录或登录已过期"}, 401)
+                return
+            data, err = add_channel(user["id"], payload.get("name"))
+            if err:
+                json_response(self, {"code": 1, "message": err}, 400)
+            else:
+                json_response(self, {"code": 0, "message": "ok", "data": data}, 201)
             return
         if path == "/api/categories":
             user = check_auth(self._bearer_token())
