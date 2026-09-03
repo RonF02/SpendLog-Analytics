@@ -59,7 +59,6 @@
       <div><select id="f-motive"></select></div>
       <div><select id="f-channel"></select></div>
     </div>
-    <div class="addbar" onclick="toggleChannelAdd()">＋ 新建渠道</div>
     <div class="addform" id="addc" style="display:none">
       <input id="c-name" placeholder="渠道名称">
       <button class="mini-btn" onclick="doAddChannel()">添加渠道</button>
@@ -751,13 +750,29 @@ async function loadDict(){
       if(!keep){
         sel.value = j.last_used_channel_id || (j.data && j.data[0] && j.data[0].id) || '';
       }
+      // 底部「新建渠道」选项，选中后展开内联输入
+      if(![...sel.options].some(o=> o.value === '__new__')){
+        const n = document.createElement('option');
+        n.value = '__new__'; n.textContent = '＋ 新建渠道';
+        sel.appendChild(n);
+      }
       channelsLoaded = true;
     }catch(e){ toast(e.message); }
   }
 }
+// 渠道下拉选中「＋新建渠道」时展开内联输入
+$('f-channel').addEventListener('change', ()=>{
+  const sel = $('f-channel');
+  if(sel.value === '__new__'){
+    sel.dataset.prev = sel.dataset.prev || '';
+    sel.dataset.prev = sel.options[sel.selectedIndex-1] ? sel.options[sel.selectedIndex-1].value : '';
+    $('addc').style.display = 'flex';
+    sel.value = sel.dataset.prev;
+    $('c-name').focus();
+  }
+});
 
 // ---- 新建渠道 ----
-function toggleChannelAdd(){ $('addc').style.display = $('addc').style.display === 'none' ? 'flex' : 'none'; }
 async function doAddChannel(){
   const name = $('c-name').value.trim();
   if(!name){ toast('请输入渠道名称'); return; }
