@@ -537,7 +537,6 @@ function renderMainChips(){
     chip.dataset.id = c.id;
     chip.dataset.used = c.used ? '1' : '0';
     chip.textContent = c.name;
-    chip.onclick = ()=> selectMain(c.id);
     bindChipDelete(chip);
     box.appendChild(chip);
   });
@@ -563,10 +562,6 @@ function renderSubChips(id){
     chip.textContent = c.name;
     chip.dataset.id = c.id;
     chip.dataset.used = c.used ? '1' : '0';
-    chip.onclick = ()=>{
-      document.querySelectorAll('#chips-sub .chip').forEach(x=>x.classList.remove('active'));
-      chip.classList.add('active');
-    };
     bindChipDelete(chip);
     box.appendChild(chip);
   });
@@ -676,11 +671,24 @@ function enableChipDrag(box, isMain){
     relocateMarker(e);
   });
   const end = e=>{
-    if(!drag || drag.box !== box || e.pointerId !== drag.id) return;
+    const d = drag;
+    if(!d || d.box !== box || e.pointerId !== d.id) return;
+    const wasMoved = d.started;
     finishDrag(e);
+    if(!wasMoved) selectChip(d.box, d.chip); // 未拖动=点击，用于选中
   };
   box.addEventListener('pointerup', end);
   box.addEventListener('pointercancel', end);
+}
+// pointer capture 会把 click 重定向到容器，故选择放在 pointerup：未发生拖动即选中
+function selectChip(box, chip){
+  const id = Number(chip.dataset.id);
+  if(!id) return;
+  if(box.id === 'chips-main') selectMain(id);
+  else if(box.id === 'chips-sub'){
+    document.querySelectorAll('#chips-sub .chip').forEach(x=>x.classList.remove('active'));
+    chip.classList.add('active');
+  }
 }
 function startGhost(e){
   const d = drag;
