@@ -199,15 +199,27 @@ def aggregate(uid, params):
     # 支出记录集合
     exp = [x for x in recs if x["amount"] is not None and x["amount"] < 0]
 
-    # ---- scene_breakdown（支出，按 cur_root 的直属子节分组）----
-    sb_map = {}
-    for x in exp:
-        g = top_child(x)
-        if g is None:
-            continue
-        e = sb_map.setdefault(g, {"category_id": g, "name": cat_name.get(g) or "未分类", "total": 0.0})
-        e["total"] += -x["amount"]
-    scene_breakdown = sorted(sb_map.values(), key=lambda z: -z["total"])
+    # ---- scene_breakdown（支出）----
+    # 下钻到叶子（无子节点）：逐条列出具体消费条目（每笔一行），而非聚合到上一级场景
+    if cur_root is not None and not children_of(cur_root):
+        scene_breakdown = []
+        for x in sorted(exp, key=lambda z: -z["amount"]):
+            label = x["note"] or (x["category"] or "未分类")
+            if not x["note"] and x["channel"]:
+                label = (x["category"] or "未分类") + " · " + x["channel"]
+            scene_breakdown.append({
+                "date": x["date"], "time": x["time"],
+                "name": label, "total": round(-x["amount"], 2),
+            })
+    else:
+        sb_map = {}
+        for x in exp:
+            g = top_child(x)
+            if g is None:
+                continue
+            e = sb_map.setdefault(g, {"category_id": g, "name": cat_name.get(g) or "未分类", "total": 0.0})
+            e["total"] += -x["amount"]
+        scene_breakdown = sorted(sb_map.values(), key=lambda z: -z["total"])
 
     # ---- scenario_breakdown（支出，按消费场景）----
     sc_map = {}
