@@ -13,6 +13,7 @@ from datetime import datetime
 
 from db import get_user_conn
 from records import add_record, add_channel
+from categories import add_category
 
 _NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 _CT = "http://schemas.openxmlformats.org/package/2006/content-types"
@@ -34,8 +35,39 @@ def _col_letter(n):
     return s
 
 
-def write_xlsx(headers, rows, sheet_name="records"):
-    """把表头 + 数据写成 .xlsx 字节。rows 为等长 list（与 headers 对齐）。"""
+root_rels = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<Relationships xmlns="{rs}">'
+    '<Relationship Id="rId1" Type="{od}/officeDocument" Target="xl/workbook.xml"/>'
+    '</Relationships>'
+).format(rs=_RS, od=_OD)
+
+styles_xml = (
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    '<styleSheet xmlns="{ns}">'
+    '<fonts count="2">'
+    '<font><sz val="11"/><color theme="1"/><name val="宋体"/><family val="2"/></font>'
+    '<font><b/><sz val="11"/><color theme="1"/><name val="宋体"/><family val="2"/></font>'
+    '</fonts>'
+    '<fills count="2">'
+    '<fill><patternFill patternType="none"/></fill>'
+    '<fill><patternFill patternType="gray125"/></fill>'
+    '</fills>'
+    '<borders count="1"><border>'
+    '<left style="none"/><right style="none"/><top style="none"/><bottom style="none"/><diagonal/>'
+    '</border></borders>'
+    '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
+    '<cellXfs count="2">'
+    '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+    '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
+    '</cellXfs>'
+    '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
+    '</styleSheet>'
+).format(ns=_NS)
+
+
+def _sheet_xml(headers, rows, sheet_name):
+    """单个 worksheet 的 XML。与旧 write_xlsx 相同格式。"""
     lines = []
     for rnum, row in enumerate([headers] + rows, start=1):
         cells = []
@@ -47,64 +79,49 @@ def write_xlsx(headers, rows, sheet_name="records"):
                 cells.append('<c r="{0}" t="inlineStr"><is><t xml:space="preserve">{1}</t></is></c>'
                              .format(ref, _xml_escape(val)))
         lines.append('<row r="{}">{}</row>'.format(rnum, "".join(cells)))
-    sheet = ('<worksheet xmlns="{0}"><sheetData>{1}</sheetData></worksheet>'
-             .format(_NS, "".join(lines)))
+    return ('<worksheet xmlns="{0}"><sheetData>{1}</sheetData></worksheet>'
+            .format(_NS, "".join(lines)))
 
+
+def write_xlsx_sheets(sheets):
+    """把多张工作表写成 .xlsx 字节。
+
+    sheets: list of (name, headers, rows)。
+    """
+    sheets_xml = [(name, _sheet_xml(h, r, name)) for name, h, r in sheets]
+    n = len(sheets_xml)
+
+    sheet_overrides = "".join(
+        '<Override PartName="/xl/worksheets/sheet{}.xml" '
+        'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        .format(i) for i in range(1, n + 1))
     content_types = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Types xmlns="{ct}">'
         '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
         '<Default Extension="xml" ContentType="application/xml"/>'
         '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-        '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        + sheet_overrides +
         '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
         '</Types>'
     ).format(ct=_CT)
 
-    root_rels = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<Relationships xmlns="{rs}">'
-        '<Relationship Id="rId1" Type="{od}/officeDocument" Target="xl/workbook.xml"/>'
-        '</Relationships>'
-    ).format(rs=_RS, od=_OD)
-
+    work_sheets = "".join(
+        '<sheet name="{name}" sheetId="{i}" r:id="rId{i}"/>'.format(name=_xml_escape(name), i=i)
+        for i, (name, _) in enumerate(sheets_xml, start=1))
     workbook = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<workbook xmlns="{ns}" xmlns:r="{od}">'
-        '<sheets><sheet name="{name}" sheetId="1" r:id="rId1"/></sheets>'
-        '</workbook>'
-    ).format(ns=_NS, od=_OD, name=_xml_escape(sheet_name))
+        '<workbook xmlns="{ns}" xmlns:r="{od}"><sheets>{sheets}</sheets></workbook>'
+    ).format(ns=_NS, od=_OD, sheets=work_sheets)
 
     wb_rels = (
         '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         '<Relationships xmlns="{rs}">'
-        '<Relationship Id="rId1" Type="{od}/worksheet" Target="worksheets/sheet1.xml"/>'
-        '<Relationship Id="rId2" Type="{od}/styles" Target="styles.xml"/>'
-        '</Relationships>'
-    ).format(rs=_RS, od=_OD)
-
-    styles = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<styleSheet xmlns="{ns}">'
-        '<fonts count="2">'
-        '<font><sz val="11"/><color theme="1"/><name val="宋体"/><family val="2"/></font>'
-        '<font><b/><sz val="11"/><color theme="1"/><name val="宋体"/><family val="2"/></font>'
-        '</fonts>'
-        '<fills count="2">'
-        '<fill><patternFill patternType="none"/></fill>'
-        '<fill><patternFill patternType="gray125"/></fill>'
-        '</fills>'
-        '<borders count="1"><border>'
-        '<left style="none"/><right style="none"/><top style="none"/><bottom style="none"/><diagonal/>'
-        '</border></borders>'
-        '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-        '<cellXfs count="2">'
-        '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
-        '<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>'
-        '</cellXfs>'
-        '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
-        '</styleSheet>'
-    ).format(ns=_NS)
+    ).format(rs=_RS)
+    for i in range(1, n + 1):
+        wb_rels += '<Relationship Id="rId{}" Type="{od}/worksheet" Target="worksheets/sheet{}.xml"/>'.format(i, i, od=_OD)
+    wb_rels += '<Relationship Id="rId{}" Type="{od}/styles" Target="styles.xml"/>'.format(n + 1, od=_OD)
+    wb_rels += '</Relationships>'
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -112,9 +129,15 @@ def write_xlsx(headers, rows, sheet_name="records"):
         z.writestr("_rels/.rels", root_rels)
         z.writestr("xl/workbook.xml", workbook)
         z.writestr("xl/_rels/workbook.xml.rels", wb_rels)
-        z.writestr("xl/styles.xml", styles)
-        z.writestr("xl/worksheets/sheet1.xml", sheet)
+        z.writestr("xl/styles.xml", styles_xml)
+        for i, (_, xml) in enumerate(sheets_xml, start=1):
+            z.writestr("xl/worksheets/sheet{}.xml".format(i), xml)
     return buf.getvalue()
+
+
+def write_xlsx(headers, rows, sheet_name="records"):
+    """写单张工作表（兼容单 sheet 使用方）。"""
+    return write_xlsx_sheets([(sheet_name, headers, rows)])
 
 
 def _col_to_idx(col):
@@ -124,24 +147,8 @@ def _col_to_idx(col):
     return n
 
 
-def read_xlsx(data):
-    """从 .xlsx 字节读数据。返回 (headers, rows)。
-
-    headers: 首行表头（去空白）列表
-    rows:    其余行，list[dict]，dict 以表头为键（数值已转文本）
-    """
-    with zipfile.ZipFile(io.BytesIO(data)) as z:
-        names = z.namelist()
-        shared = []
-        if "xl/sharedStrings.xml" in names:
-            root = ET.fromstring(z.read("xl/sharedStrings.xml"))
-            for si in root.findall(_TAG + "si"):
-                shared.append("".join(t.text or "" for t in si.iter(_TAG + "t")))
-        sheet_path = "xl/worksheets/sheet1.xml"
-        if sheet_path not in names:
-            return [], []
-        root = ET.fromstring(z.read(sheet_path))
-
+def _parse_worksheet(root, shared):
+    """把单个 worksheet XML 解析为 (headers, rows)。"""
     grid = []
     for row_el in root.iter(_TAG + "row"):
         cells = {}
@@ -180,8 +187,55 @@ def read_xlsx(data):
     return headers, rows
 
 
+def read_xlsx_sheets(data):
+    """读取 .xlsx 全部工作表。返回 {sheet_name: (headers, rows)}。"""
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        names = z.namelist()
+        shared = []
+        if "xl/sharedStrings.xml" in names:
+            root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+            for si in root.findall(_TAG + "si"):
+                shared.append("".join(t.text or "" for t in si.iter(_TAG + "t")))
+        wb_root = ET.fromstring(z.read("xl/workbook.xml"))
+        # sheet 名 -> r:id
+        rid_of = {}
+        for sh in wb_root.iter(_TAG + "sheet"):
+            rid = sh.get("{%s}id" % _OD) or sh.get("id")
+            if rid:
+                rid_of[sh.get("name")] = rid
+        # r:id -> 目标文件
+        target_of = {}
+        if "xl/_rels/workbook.xml.rels" in names:
+            rels_root = ET.fromstring(z.read("xl/_rels/workbook.xml.rels"))
+            for rel in rels_root:
+                rid, tgt = rel.get("Id"), rel.get("Target")
+                if rid and tgt:
+                    target_of[rid] = tgt
+        sheets = {}
+        for name, rid in rid_of.items():
+            tgt = target_of.get(rid)
+            if not tgt:
+                continue
+            path = tgt if tgt.startswith("xl/") else "xl/" + tgt
+            if path not in names:
+                continue
+            root = ET.fromstring(z.read(path))
+            sheets[name] = _parse_worksheet(root, shared)
+    return sheets
+
+
+def read_xlsx(data):
+    """读取 .xlsx 第一张工作表。返回 (headers, rows)。"""
+    sheets = read_xlsx_sheets(data)
+    if not sheets:
+        return [], []
+    headers, rows = next(iter(sheets.values()))
+    return headers, rows
+
+
 # ---- 当前用户记录的导出 / 导入 ----
 COLUMNS = ["日期", "时间", "金额", "分类", "消费场景", "渠道", "备注"]
+ACCOUNTS_COLUMNS = ["账户名称", "余额"]
 
 
 def _category_paths(conn):
@@ -202,9 +256,11 @@ def _category_paths(conn):
 
 
 def export_records(uid):
-    """导出当前用户全部记录为 .xlsx 字节。
+    """导出当前用户全部记录与账户余额为 .xlsx 字节。
 
-    保存记账时输入的全部字段：日期/时间/金额/分类(全路径)/消费场景/渠道/备注。
+    两张工作表：
+      「记账记录」：保存记账时输入的全部字段（日期/时间/金额/分类全路径/消费场景/渠道/备注）；
+      「账户」：账户名称 + 当前余额（导入时可自动补建并回写余额）。
     """
     conn = get_user_conn(uid)
     path_of = _category_paths(conn)
@@ -216,6 +272,8 @@ def export_records(uid):
                LEFT JOIN dim_motive m ON m.id=r.motive_id
                LEFT JOIN dim_channel ch ON ch.id=r.channel_id
                ORDER BY r.date, r.time""").fetchall()
+        accts = conn.execute(
+            "SELECT name, balance FROM dim_channel ORDER BY id").fetchall()
     finally:
         conn.close()
     data = []
@@ -223,19 +281,88 @@ def export_records(uid):
         data.append([x["date"], x["time"] or "", x["amount"],
                      path_of(x["category_id"]), x["motive"] or "",
                      x["channel"] or "", x["note"] or ""])
-    return write_xlsx(COLUMNS, data, "记账记录")
+    account_rows = [[a["name"], a["balance"]] for a in accts]
+    return write_xlsx_sheets([
+        ("记账记录", COLUMNS, data),
+        ("账户", ACCOUNTS_COLUMNS, account_rows),
+    ])
+
+
+def _child_id(uid, name, parent_id):
+    """按名称在其父级下查分类 id，找不到返回 None。"""
+    conn = get_user_conn(uid)
+    try:
+        if parent_id is None:
+            row = conn.execute(
+                "SELECT id FROM dim_category WHERE name=? AND parent_id IS NULL",
+                (name,)).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id FROM dim_category WHERE name=? AND parent_id=?",
+                (name, parent_id)).fetchone()
+        return row["id"] if row else None
+    finally:
+        conn.close()
+
+
+def _resolve_or_create(uid, cname, leaf_by_path, leaf_by_name):
+    """按 Excel 的分类名解析叶子 id；找不到则自适应补建整套分类。
+
+    支持「一级/子项[/商家]」全路径，逐层匹配/补建到叶子；
+    单个子项名若在现存分类中唯一则复用，否则补建到「其他」一级下
+    （保证是可记账的二级叶子，不会建出无法记账的一级）。
+    """
+    if not cname:
+        return None
+    if cname in leaf_by_path:
+        return leaf_by_path[cname]
+    ids = leaf_by_name.get(cname, [])
+    if len(ids) == 1:
+        return ids[0]
+    parts = [p for p in (s.strip() for s in str(cname).split("/")) if p]
+    if not parts:
+        return None
+    if len(parts) == 1:
+        parent_id = _child_id(uid, "其他", None)
+        if parent_id is None:
+            created, err = add_category(uid, "其他", None)
+            if err or not created:
+                return None
+            parent_id = created["id"]
+        parts = ["其他", parts[0]]
+    parent_id, node_id, ok = None, None, True
+    for part in parts:
+        node_id = _child_id(uid, part, parent_id)
+        if node_id is None:
+            created, err = add_category(uid, part, parent_id)
+            if err or not created:
+                ok = False
+                break
+            node_id = created["id"]
+        parent_id = node_id
+    return node_id if ok else None
 
 
 def import_records(uid, raw):
-    """从 .xlsx 字节导入记录到当前用户。返回 {added, skipped, errors}。
+    """从 .xlsx 字节导入记录与账户余额到当前用户。返回 {added, skipped, errors}。
 
-    按列名匹配「日期/时间/金额/分类/消费场景/渠道/备注」；
-    分类按叶子名称解析（同名歧义时只解析到唯一叶子，否则跳过）；
+    「记账记录」按列名匹配「日期/时间/金额/分类/消费场景/渠道/备注」；
+    分类按叶子名称解析（全路径 → 唯一叶子名），找不到时自适应补建缺失分类；
     消费场景按名称解析，缺省按收入/支出给默认/不填；渠道按名称，不存在则自动新建。
     以「日期+金额+分类+场景+渠道+备注」去重（幂等）。
+    「账户」逐一回写余额：账户缺失则自动新建，Excel 中的余额直接覆盖。
     """
-    headers, rows = read_xlsx(raw)
-    if not headers or not rows:
+    sheets = read_xlsx_sheets(raw)
+    rec_rows = None
+    acct_rows = None
+    for name, (h, r) in sheets.items():
+        if not r:
+            continue
+        if rec_rows is None and h and "日期" in h:
+            rec_rows = r
+        if "余额" in h and "账户名称" in h:
+            acct_rows = r
+    if not rec_rows:
         return {"added": 0, "skipped": 0, "errors": "文件为空或无数据"}
 
     conn = get_user_conn(uid)
@@ -271,7 +398,7 @@ def import_records(uid, raw):
 
     added = skipped = 0
     skip_reasons = []
-    for row in rows:
+    for row in rec_rows:
         try:
             amount = float(resolve_field(row, "金额"))
         except (TypeError, ValueError):
@@ -285,16 +412,9 @@ def import_records(uid, raw):
         if not date:
             skipped += 1
             continue
-        # 分类（叶子）：优先按全路径，其次按唯一叶子名
+        # 分类（叶子）：全路径 → 唯一叶子名 → 自适应补建缺失分类
         cname = resolve_field(row, "分类")
-        cat_id = None
-        if cname:
-            if cname in leaf_by_path:
-                cat_id = leaf_by_path[cname]
-            else:
-                ids = leaf_by_name.get(cname, [])
-                if len(ids) == 1:
-                    cat_id = ids[0]
+        cat_id = _resolve_or_create(uid, cname, leaf_by_path, leaf_by_name)
         if cat_id is None:
             skipped += 1
             skip_reasons.append("分类「%s」无法定位叶子" % cname)
@@ -338,6 +458,43 @@ def import_records(uid, raw):
             skip_reasons.append(err)
             continue
         added += 1
+
+    # 回写账户余额：缺失自动新建，余额直接覆盖
+    if acct_rows:
+        acct_conn = get_user_conn(uid)
+        try:
+            cid_by_name = {r["name"]: r["id"]
+                           for r in acct_conn.execute(
+                               "SELECT id, name FROM dim_channel").fetchall()}
+            for row in acct_rows:
+                if row.get("账户名称") in (None, ""):
+                    continue
+                name = str(row["账户名称"]).strip()
+                try:
+                    balance = float(row.get("余额"))
+                except (TypeError, ValueError):
+                    continue
+                ch_id = cid_by_name.get(name)
+                if not ch_id:
+                    created, err = add_channel(uid, name or "未命名账户")
+                    if err or not created:
+                        continue
+                    ch_id = created["id"]
+                    cid_by_name[name] = ch_id
+                    ch_conn = get_user_conn(uid)
+                    try:
+                        ch_conn.execute(
+                            "UPDATE dim_channel SET balance=? WHERE id=?", (balance, ch_id))
+                        ch_conn.commit()
+                    finally:
+                        ch_conn.close()
+                    continue
+                acct_conn.execute(
+                    "UPDATE dim_channel SET balance=? WHERE id=?", (balance, ch_id))
+            acct_conn.commit()
+        finally:
+            acct_conn.close()
+
     return {"added": added, "skipped": skipped,
             "errors": ("；".join(dict.fromkeys(skip_reasons))[:200]
                        if skip_reasons else "")}

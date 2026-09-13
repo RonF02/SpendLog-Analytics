@@ -71,7 +71,7 @@ docs/             重构方案与阶段计划
 | POST | `/api/sessions/revoke` | 强制下线 |
 | GET/POST | `/api/admin/*` | 管理员：用户、会话管理 |
 
-`/api/report/aggregate` 支持参数：`month`(必选, YYYY-MM)、`category_id`、`motive`、`channel`、`is_weekend`、`period`、`month_part`，可任意组合。
+`/api/report/aggregate` 支持参数：`month`(必选, YYYY-MM)、`category_id`、`motive`、`channel`、`is_weekend`、`period`、`month_part`，同一维度可传多个值（数组）实现复选，可任意组合与下钻。
 
 ## 数据模型
 
