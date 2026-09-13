@@ -170,6 +170,10 @@ header{ position:sticky; top:0; z-index:20; background:var(--card); border-botto
 .edit-modal .label{ margin-top:12px; }
 .edit-modal input,.edit-modal select{ box-sizing:border-box; }
 .edit-modal-actions{ display:flex; justify-content:flex-end; gap:8px; margin-top:18px; }
+tr.flash{ background:#fff3cd; }
+tr.flash td{ background:#fff3cd; }
+tr.flash-fade{ background:transparent; }
+tr.flash-fade td{ background:transparent; transition:background 0.5s linear; }
 
 #toast{ position:fixed; left:50%; bottom:90px; transform:translateX(-50%); z-index:60;
   padding:10px 18px; border-radius:20px; color:#fff; font-size:13px;

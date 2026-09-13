@@ -208,7 +208,7 @@ def aggregate(uid, params):
             if not x["note"] and x["channel"]:
                 label = (x["category"] or "未分类") + " · " + x["channel"]
             scene_breakdown.append({
-                "date": x["date"], "time": x["time"],
+                "date": x["date"], "time": x["time"], "uuid": x["uuid"],
                 "name": label, "total": round(-x["amount"], 2),
             })
     else:

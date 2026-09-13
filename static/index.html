@@ -356,12 +356,24 @@ function crumbHtml(path){
   (path||[]).forEach(p=>{ h += ' / <a href="javascript:void(0)" onclick="drillTo('+p.category_id+')">'+(p.name||'-')+'</a>'; });
   return h + '</div>';
 }
-function barItem(total,name,max,cid){
+function barItem(total,name,max,cid,uuid){
   const pct = max>0 ? Math.round(total/max*100) : 0;
-  const cursor = cid!==undefined ? ' style="cursor:pointer"' : '';
-  return '<div class="bar-row"'+(cid!==undefined?' onclick="drillTo('+cid+')"':'')+cursor+'><div class="bar-label">'+name+'</div>'
+  let act = '', cursor = '';
+  if(cid!==undefined){ act = 'onclick="drillTo('+cid+')"'; cursor = ' style="cursor:pointer"'; }
+  else if(uuid){ act = "onclick=\"locateRecord('"+uuid+"')\""; cursor = ' style="cursor:pointer"'; }
+  return '<div class="bar-row"'+act+cursor+'><div class="bar-label">'+name+'</div>'
     + '<div class="bar-track"><div class="bar-fill" style="width:'+pct+'%"></div></div>'
     + '<div class="bar-val">'+fm(total)+'</div></div>';
+}
+function locateRecord(uuid){
+  const row = document.getElementById('rec-'+uuid);
+  if(!row){ toast('未找到该记录'); return; }
+  row.scrollIntoView({behavior:'smooth', block:'center'});
+  row.classList.add('flash');
+  clearTimeout(row._flashT);
+  row._flashT = setTimeout(()=>row.classList.add('flash-fade'), 700);
+  clearTimeout(row._flashFadeT);
+  row._flashFadeT = setTimeout(()=>{ row.classList.remove('flash'); row.classList.remove('flash-fade'); }, 2100);
 }
 function renderStats(d, chans, mots){
   const t = d.total || {income:0, expense:0, balance:0};
@@ -380,7 +392,7 @@ function renderStats(d, chans, mots){
     + '<div class="stat-cell"><div class="stat-v">'+fm(t.balance)+'</div><div class="stat-l">结余</div></div>'
     + '</div>';
   html += '<div class="mod-title">钱去哪了（场景，点击下钻）</div>'
-    + (scene.length ? scene.map(x=>barItem(x.total, x.name, max, x.category_id)).join('') : '<div class="note">本月无支出</div>');
+    + (scene.length ? scene.map(x=>barItem(x.total, x.name, max, x.category_id, x.uuid)).join('') : '<div class="note">本月无支出</div>');
   html += '<div class="mod-title">怎么花的（消费场景，点击筛选）</div>'
     + (scen.length ? scen.map(x=>'<div class="kv" onclick="scenFilter('+(x.id||x.name)+')"><span class="clicky">'+x.name+'</span><span>'+fm(x.total)+'</span></div>').join('') : '<div class="note">本月无支出</div>');
   html += '<div class="mod-title">渠道</div>'
@@ -390,7 +402,7 @@ function renderStats(d, chans, mots){
     + '</table>';
   html += '<div class="mod-title">记录明细（'+recs.length+'）</div><table class="tbl">'
     + '<tr><th>日期</th><th>金额</th><th>分类</th><th>消费场景</th><th>渠道</th><th>备注</th><th>操作</th></tr>'
-    + (recs.length ? recs.map(x=>'<tr><td>'+(x.date||'')+' '+(x.time||'')+'</td><td>'+fm(x.amount)+'</td><td>'+(x.category||'-')+'</td><td>'+(x.motive||'-')+'</td><td>'+(x.channel||'-')+'</td><td>'+(x.note||'')+'</td>'
+    + (recs.length ? recs.map(x=>'<tr id="rec-'+x.uuid+'"><td>'+(x.date||'')+' '+(x.time||'')+'</td><td>'+fm(x.amount)+'</td><td>'+(x.category||'-')+'</td><td>'+(x.motive||'-')+'</td><td>'+(x.channel||'-')+'</td><td>'+(x.note||'')+'</td>'
         +'<td><button class="mini-btn" onclick="openRecordEdit(\''+x.uuid+'\')">编辑</button></td></tr>').join('') : '<tr><td colspan="7" class="note">无记录</td></tr>')
     + '</table>';
   // 预算执行（阶段6.7，超支红）
