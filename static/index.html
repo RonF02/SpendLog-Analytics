@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -145,6 +145,30 @@
 </div>
 
 <div id="toast"></div>
+
+<!-- 编辑记录弹窗 -->
+<div class="modal-mask" id="recordEdit-mask" onclick="closeRecordEdit()"></div>
+<div class="edit-modal" id="recordEdit">
+  <div class="edit-modal-head">编辑记录</div>
+  <div class="label" style="margin-top:6px">日期</div>
+  <input type="date" id="ed-date">
+  <div class="label">时间</div>
+  <input type="time" id="ed-time">
+  <div class="label">金额（支出为负，收入为正）</div>
+  <input type="number" step="0.01" id="ed-amount" placeholder="0.00">
+  <div class="label">分类</div>
+  <select id="ed-cat"></select>
+  <div class="label">消费场景</div>
+  <select id="ed-motive"></select>
+  <div class="label">渠道</div>
+  <select id="ed-channel"></select>
+  <div class="label">备注</div>
+  <input type="text" id="ed-note" placeholder="选填">
+  <div class="edit-modal-actions">
+    <button class="mini-btn" onclick="closeRecordEdit()">取消</button>
+    <button class="btn small" onclick="saveRecordEdit()">保存</button>
+  </div>
+</div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -346,6 +370,7 @@ function renderStats(d, chans, mots){
   const chan = d.channel_breakdown || [];
   const dist = d.spending_dist || [];
   const recs = d.records || [];
+  _editRecs = recs;
   const max = Math.max.apply(null, [1].concat(scene.map(x=>x.total))) || 1;
   // 顶栏：筛选 + 面包屑
   let html = filtersHtml(chans || [], mots || []) + crumbHtml(d.path);
@@ -364,8 +389,9 @@ function renderStats(d, chans, mots){
     + (dist.length ? dist.map(x=>'<tr><td>'+x.name+'</td><td>'+fm(x.total)+'</td><td>'+x.count+'</td><td>'+fm(x.median)+'</td><td>'+fm(x.avg)+'</td></tr>').join('') : '<tr><td colspan="5" class="note">本月无支出</td></tr>')
     + '</table>';
   html += '<div class="mod-title">记录明细（'+recs.length+'）</div><table class="tbl">'
-    + '<tr><th>日期</th><th>金额</th><th>分类</th><th>消费场景</th><th>渠道</th><th>备注</th></tr>'
-    + (recs.length ? recs.map(x=>'<tr><td>'+(x.date||'')+' '+(x.time||'')+'</td><td>'+fm(x.amount)+'</td><td>'+(x.category||'-')+'</td><td>'+(x.motive||'-')+'</td><td>'+(x.channel||'-')+'</td><td>'+(x.note||'')+'</td></tr>').join('') : '<tr><td colspan="6" class="note">无记录</td></tr>')
+    + '<tr><th>日期</th><th>金额</th><th>分类</th><th>消费场景</th><th>渠道</th><th>备注</th><th>操作</th></tr>'
+    + (recs.length ? recs.map(x=>'<tr><td>'+(x.date||'')+' '+(x.time||'')+'</td><td>'+fm(x.amount)+'</td><td>'+(x.category||'-')+'</td><td>'+(x.motive||'-')+'</td><td>'+(x.channel||'-')+'</td><td>'+(x.note||'')+'</td>'
+        +'<td><button class="mini-btn" onclick="openRecordEdit(\''+x.uuid+'\')">编辑</button></td></tr>').join('') : '<tr><td colspan="7" class="note">无记录</td></tr>')
     + '</table>';
   // 预算执行（阶段6.7，超支红）
   const bud = d.budget || [];
@@ -1115,6 +1141,80 @@ async function submitRecord(){
       body: JSON.stringify(payload) });
     $('f-amount').value=''; $('f-note').value='';
     channelsLoaded = false; loadDict(); // 刷新渠道余额显示与「记住上一次渠道」
+    toast('已保存', true);
+  }catch(e){ toast(e.message); }
+}
+
+// ---- 编辑记录 ----
+let _editRecs = [];
+let _editingUuid = null;
+function _leafOptions(){
+  // 递归取叶子（无子节点），返回 [{id, path}]，path 形如「一级/子项」
+  const out = [];
+  function walk(nodes, prefix){
+    (nodes||[]).forEach(n=>{
+      const p = prefix ? prefix + '/' + n.name : n.name;
+      if(n.children && n.children.length) walk(n.children, p);
+      else out.push({ id: n.id, path: p });
+    });
+  }
+  walk(S.categories, '');
+  return out;
+}
+function _fillSelect(selId, options, selected, labelFn){
+  const sel = $(selId); sel.innerHTML = '';
+  options.forEach(o=>{
+    const e = document.createElement('option');
+    e.value = o.id; e.textContent = labelFn(o);
+    sel.appendChild(e);
+  });
+  if(selected != null) sel.value = String(selected);
+}
+async function openRecordEdit(uuid){
+  const rec = (_editRecs||[]).find(r=>r.uuid===uuid);
+  if(!rec){ toast('未找到该记录'); return; }
+  if(!S.categories.length){
+    try{ await loadCategories(); }catch(e){ toast(e.message); return; }
+  }
+  let chans=[], mots=[];
+  try{ const v = await getFilterData(); chans=v[0]; mots=v[1]; }
+  catch(e){ /* 已有缓存则用缓存 */ }
+  _editingUuid = uuid;
+  $('ed-date').value = rec.date || '';
+  $('ed-time').value = rec.time || '';
+  $('ed-amount').value = rec.amount;
+  _fillSelect('ed-cat', _leafOptions(), rec.category_id, o=>o.path);
+  _fillSelect('ed-motive', mots, rec.motive_id, o=>o.name);
+  _fillSelect('ed-channel', chans, rec.channel_id, o=>o.name);
+  $('ed-note').value = rec.note || '';
+  $('recordEdit').style.display = 'block';
+  $('recordEdit-mask').style.display = 'block';
+}
+function closeRecordEdit(){
+  $('recordEdit').style.display = 'none';
+  $('recordEdit-mask').style.display = 'none';
+}
+async function saveRecordEdit(){
+  const amount = parseFloat($('ed-amount').value);
+  if(isNaN(amount) || amount === 0){ toast('请输入有效金额'); return; }
+  if(!$('ed-cat').value){ toast('请选择分类'); return; }
+  if(!$('ed-date').value){ toast('请选择日期'); return; }
+  const payload = {
+    uuid: _editingUuid,
+    date: $('ed-date').value,
+    time: $('ed-time').value || '',
+    amount,
+    category_id: Number($('ed-cat').value),
+    motive_id: $('ed-motive').value ? Number($('ed-motive').value) : null,
+    channel_id: $('ed-channel').value ? Number($('ed-channel').value) : null,
+    note: $('ed-note').value.trim()
+  };
+  try{
+    await api('/api/records/update', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload) });
+    closeRecordEdit();
+    channelsLoaded = false; loadDict();
+    loadStats(); // 刷新明细与报表
     toast('已保存', true);
   }catch(e){ toast(e.message); }
 }

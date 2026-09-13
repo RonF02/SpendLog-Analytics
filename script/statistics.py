@@ -257,7 +257,8 @@ def aggregate(uid, params):
     # ---- records（明细，日期/时间降序，数量上限避免过大）----
     records = [{"uuid": x["uuid"], "date": x["date"], "time": x["time"], "amount": x["amount"],
                 "category": x["category"], "motive": x["motive"], "channel": x["channel"],
-                "note": x["note"]}
+                "category_id": x["category_id"], "motive_id": x["motive_id"],
+                "channel_id": x["channel_id"], "note": x["note"]}
                for x in recs]
     records.sort(key=lambda z: (z["date"], z["time"] or ""), reverse=True)
 

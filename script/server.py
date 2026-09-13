@@ -22,7 +22,7 @@ from admin import (list_users, change_password, admin_reset_password,
 from auth import (ensure_admin, register, login, logout, check_auth,
                   create_user, list_sessions, revoke_session, delete_account)
 from categories import get_categories, add_category, delete_category, reorder_categories
-from records import list_motives, channels_info, add_channel, add_record
+from records import list_motives, channels_info, add_channel, add_record, update_record
 from statistics import aggregate
 from budgets import list_budgets, set_budget
 from balance import list_balance, calibrate
@@ -292,6 +292,21 @@ class Handler(BaseHTTPRequestHandler):
                 json_response(self, {"code": 1, "message": err}, 400)
             else:
                 json_response(self, {"code": 0, "message": "ok", "data": data}, 201)
+            return
+        if path == "/api/records/update":
+            user = check_auth(self._bearer_token())
+            if not user:
+                json_response(self, {"code": 401, "message": "未登录或登录已过期"}, 401)
+                return
+            rid = (payload.get("uuid") or "").strip()
+            if not rid:
+                json_response(self, {"code": 1, "message": "缺少记录 uuid"}, 400)
+                return
+            data, err = update_record(user["id"], rid, payload)
+            if err:
+                json_response(self, {"code": 1, "message": err}, 400)
+            else:
+                json_response(self, {"code": 0, "message": "ok", "data": data})
             return
         if path == "/api/channels":
             user = check_auth(self._bearer_token())

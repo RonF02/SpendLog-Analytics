@@ -113,3 +113,69 @@ def add_record(uid, data):
         return {"uuid": rid}, None
     finally:
         conn.close()
+
+
+def update_record(uid, record_id, data):
+    """按 uuid 更新一条记录（日期/时间/金额/分类/消费场景/渠道/备注）。
+
+    金额或渠道变化时联动调整渠道余额（旧的减回、新的加上），与 add_record 的
+    balance += amount 规则保持一致。
+    """
+    amount = data.get("amount")
+    if amount is None or not isinstance(amount, (int, float)):
+        return None, "请输入有效金额"
+    amount = float(amount)
+    if amount == 0:
+        return None, "金额不能为 0"
+    date = (data.get("date") or "").strip()
+    if not date:
+        return None, "请选择日期"
+    category_id = _to_int(data.get("category_id"))
+    motive_id = _to_int(data.get("motive_id"))
+    channel_id = _to_int(data.get("channel_id"))
+    t = (data.get("time") or "").strip() or None
+    note = (data.get("note") or "").strip()
+
+    conn = get_user_conn(uid)
+    try:
+        old = conn.execute(
+            "SELECT amount, channel_id FROM records WHERE uuid=? AND user_id=?",
+            (record_id, uid)).fetchone()
+        if not old:
+            return None, "记录不存在"
+        old_amount = old["amount"]
+        old_channel = old["channel_id"]
+
+        # 分类校验（同 add_record）：必须是叶子
+        cat = conn.execute(
+            "SELECT id, level FROM dim_category WHERE id=?", (category_id,)).fetchone()
+        if not cat:
+            return None, "分类不存在"
+        if cat["level"] == 2:
+            if conn.execute("SELECT 1 FROM dim_category WHERE parent_id=?",
+                            (category_id,)).fetchone():
+                return None, "该二级分类下还有子分类，请选择最细一级"
+        elif cat["level"] != 3:
+            return None, "请选择叶子子分类"
+        if motive_id is not None and not conn.execute(
+                "SELECT 1 FROM dim_motive WHERE id=?", (motive_id,)).fetchone():
+            return None, "消费场景无效"
+        if channel_id is not None and not conn.execute(
+                "SELECT 1 FROM dim_channel WHERE id=?", (channel_id,)).fetchone():
+            return None, "渠道无效"
+
+        # 渠道余额联动：旧渠道减回旧金额，新渠道加上新金额（同渠道则等价净差）
+        if old_channel is not None:
+            conn.execute("UPDATE dim_channel SET balance = balance - ? WHERE id=?",
+                         (old_amount, old_channel))
+        if channel_id is not None:
+            conn.execute("UPDATE dim_channel SET balance = balance + ? WHERE id=?",
+                         (amount, channel_id))
+        conn.execute(
+            "UPDATE records SET date=?, time=?, amount=?, category_id=?, motive_id=?, "
+            "channel_id=?, note=? WHERE uuid=? AND user_id=?",
+            (date, t, amount, category_id, motive_id, channel_id, note, record_id, uid))
+        conn.commit()
+        return {"uuid": record_id}, None
+    finally:
+        conn.close()
